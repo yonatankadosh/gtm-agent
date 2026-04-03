@@ -1,6 +1,7 @@
 # Your company-specific data (filled-in context and generated output)
 context/product-overview.md
 context/customers.md
+context/competitive-landscape.md
 
 # Output contents (but keep directory structure)
 output/*
