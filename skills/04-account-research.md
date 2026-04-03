@@ -7,12 +7,14 @@ Build a deep, actionable commercial picture of a target account before outreach,
 ## Inputs
 
 - `context/product-overview.md` (required)
+- `context/competitive-landscape.md` (required — read the relevant ICP section before Step 7)
 - `output/icp.md` (required)
 - **Account identifier** — company name and/or domain provided by the user
 
 ## Dependencies
 
 - Skill 01: ICP Definition must be complete
+- `context/competitive-landscape.md` must exist (for Step 7)
 
 ## Output
 
@@ -108,11 +110,45 @@ Map to the value proposition:
 
 ### Step 7: Competitive Context
 
-- Are they already using a competing solution? Check job descriptions, tech stack data, LinkedIn profiles, G2/Capterra reviews.
-- If yes: what's their likely satisfaction level? Any signals of dissatisfaction?
-- If no: what are they using instead (point solutions, manual, nothing)?
+Read `context/competitive-landscape.md` for the relevant ICP before completing this step.
 
-**So what:** Are you displacing, filling a gap, or pioneering? This determines urgency and objection profile.
+**7a. Identify what they're using today.**
+
+Research which competitors or approaches this account currently uses:
+- Check job postings for vendor names (e.g., "Proofpoint experience required," "Mimecast admin")
+- Check tech stack databases (BuiltWith, Wappalyzer, G2 Stack)
+- Look for vendor partnership announcements, case studies, or press mentions
+- Check LinkedIn profiles of security team members for vendor certifications or experience
+- Look for G2/Capterra reviews the company has left
+
+**7b. Classify the competitive situation.**
+
+| Situation | What It Means | Urgency |
+|-----------|---------------|---------|
+| **Displacing an incumbent** | They have a tool in the same space. You need to prove superiority or a gap the incumbent doesn't fill. | Medium — requires clear differentiation and possibly a trigger event (contract renewal, dissatisfaction, incident). |
+| **Supplementing existing tools** | They have adjacent tools (e.g., email security) but nothing covering the specific gap Cyvore fills. | High — no switching cost, additive value, easier budget justification. |
+| **Pioneering (no solution)** | They have nothing — manual review, keyword filters, or simply unaware of the gap. | Variable — if they feel the pain, urgency is high. If they don't know the gap exists, you need to create awareness. |
+
+**7c. Build the competitive table.**
+
+For each relevant competitor (from the landscape file or discovered through research), produce:
+
+| Competitor | What They Cover | What They Miss (Cyvore's Gap) | Account-Specific Angle |
+|---|---|---|---|
+| [Name] | [Their coverage for this account] | [The gap Cyvore fills] | [Why this matters for THIS account specifically] |
+
+**7d. Write 2-3 discovery questions that expose the gap.**
+
+These are questions to ask in the first call that reveal whether the competitive gap exists. Pull from the landscape file's trap questions and tailor to this account's situation.
+
+**7e. Flag competitive risks.**
+
+- Is the account locked into a multi-year contract with a competitor?
+- Does the security team have strong personal relationships with incumbent vendors?
+- Does this account have a "build vs. buy" tendency (especially relevant for ICP C marketplaces)?
+- Is there a recent vendor evaluation or RFP that Cyvore missed?
+
+**So what:** Clearly state whether you're displacing, supplementing, or pioneering — and what that means for the outreach angle and objection profile.
 
 ### Step 8: Account Summary
 
@@ -189,7 +225,17 @@ Based on the research, recommend the single best next step:
 [Value proposition mapping paragraph]
 
 ## Competitive Context
-[Displacing / filling gap / pioneering — and what that means]
+**Situation:** [Displacing / Supplementing / Pioneering]
+
+| Competitor | What They Cover | What They Miss | Our Angle |
+|---|---|---|---|
+| ... | ... | ... | ... |
+
+**Discovery questions:**
+1. ...
+2. ...
+
+**Risks:** [Contract lock-in, vendor relationships, build-vs-buy tendency]
 
 ## Account Summary (60-second read)
 [150-250 word synthesis]

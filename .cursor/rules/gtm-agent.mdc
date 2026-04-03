@@ -12,13 +12,19 @@ You are a GTM (Go-To-Market) agent operating inside a structured skill system. T
 - `context/` — Product context files. Read these before executing any skill.
   - `product-overview.md` — Core product description, value prop, differentiators, pricing
   - `customers.md` — Existing customer data, win/loss notes, patterns
-- `skills/` — Methodology files (numbered 01-07). Each defines a repeatable GTM motion.
+  - `competitive-landscape.md` — Per-ICP competitor mapping: who competes, their strengths/weaknesses, Cyvore's angles, trap questions, pricing
+- `skills/` — Methodology files (numbered 01-08). Each defines a repeatable GTM motion.
 - `output/` — Where all generated results go. Never overwrite without asking.
   - `icp.md` — ICP definition document
   - `target-accounts.md` — Prioritized account list with fit scores and signals
   - `outreach-strategy.md` — General outreach playbook (channel strategy, messaging angles)
-  - `research/` — Per-account research files (named `{company-slug}.md`)
-  - `outreach/` — Per-account draft outreach (named `{company-slug}.md`)
+  - `research/` — Per-account research, organized by ICP:
+    - `icp-a-suite/` — Full Suite accounts
+    - `icp-b-feed/` — Intel Feed accounts
+    - `icp-c-marketplace/` — Marketplace Chat accounts
+    - `icp-d-telecom/` — Telecom accounts
+  - `outreach/` — Per-account outreach drafts, same ICP structure:
+    - `icp-a-suite/`, `icp-b-feed/`, `icp-c-marketplace/`, `icp-d-telecom/`
   - `meeting-prep/` — Pre-meeting briefs (named `{company-slug}-{date}.md`)
   - `outreach-learnings.md` — Signal-to-outcome log for calibration over time
 
@@ -33,6 +39,7 @@ You are a GTM (Go-To-Market) agent operating inside a structured skill system. T
 | 05 | Qualification & Scoring | Score accounts on Fit, Timing, Access, Intent (1-3 per dimension, 12-point scale) | Activation |
 | 06 | Signal-Based Outbound | Reactive outreach triggered by a buying signal — classified by tier with timing SLAs | Activation |
 | 07 | Meeting Prep | Pre-meeting brief — attendee profiles, prepared questions, objection anticipation, meeting flow | Activation |
+| 08 | Inbound Qualification | Full research + qualification of unknown accounts — ICP classification, full Skill 04 research, score, and route (Tier 1 / Tier 2 / Pass) | Activation |
 
 ## How Skills Work
 
@@ -54,7 +61,8 @@ When the user says "run [skill name]" or asks you to execute a GTM motion:
 - Skill 03: Outreach Strategy → defines how to reach them
 
 **Account Activation Engine** (run per account or batch):
-- Skill 04: Account Research → full commercial picture
+- Skill 08: Inbound Qualification → full research + qualify unknown accounts, route to Tier 1 / Tier 2 / Pass
+- Skill 04: Account Research → full commercial picture (for accounts already in the target list)
 - Skill 05: Qualification & Scoring → prioritize with data
 - Skill 06: Signal-Based Outbound → act on buying signals
 - Skill 07: Meeting Prep → prepare for the conversation
@@ -67,10 +75,11 @@ The Targeting Engine feeds into the Activation Engine. Always ensure `output/icp
 01 ICP Definition         →  no dependencies (run first)
 02 Prospecting            →  depends on 01
 03 Outreach Strategy      →  depends on 01, 04 (per-account)
-04 Account Research       →  depends on 01
+04 Account Research       →  depends on 01, competitive-landscape.md
 05 Qualification & Scoring →  depends on 01, 04
 06 Signal-Based Outbound  →  depends on 01
 07 Meeting Prep           →  depends on 04 (and ideally 05)
+08 Inbound Qualification  →  depends on 01, competitive-landscape.md (entry point for unknown accounts)
 ```
 
 ## Rules
@@ -83,4 +92,5 @@ The Targeting Engine feeds into the Activation Engine. Always ensure `output/icp
 - Keep output actionable — every section should answer "so what do I do with this?"
 - At every step, ask: "So what?" — don't list facts without commercial interpretation
 - Scores must have one-sentence justifications — no vibes-based scoring
+- When the user asks to research an account that is NOT in `target-accounts.md`, default to Skill 08 (Inbound Qualification) unless they explicitly ask for a full Skill 04 deep dive
 - Log outreach outcomes in `output/outreach-learnings.md` for calibration over time
