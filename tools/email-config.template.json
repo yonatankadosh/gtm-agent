@@ -1,0 +1,10 @@
+{
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 465,
+  "sender_email": "you@gmail.com",
+  "app_password": "xxxx-xxxx-xxxx-xxxx",
+  "telegram_bot_token": "your-bot-token-from-BotFather",
+  "default_recipient": "your-email@example.com",
+  "allowed_telegram_ids": [123456789, 987654321],
+  "apollo_api_key": "YOUR_APOLLO_API_KEY_HERE"
+}

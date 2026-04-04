@@ -69,7 +69,7 @@ Execute all nine Skill 04 steps in order:
 2. **Strategic Moment** — what's changed in the last 90 days that creates relevance
 3. **ICP Assessment** — evaluate against the ICP identified in Step 1, criterion by criterion
 4. **Technology & Operations** — tech stack, collaboration tools, operational maturity
-5. **The Buying Committee** — economic buyer, champion candidate, influencer, blocker risk
+5. **The Buying Committee** — economic buyer, champion candidate, influencer, blocker risk (includes Skill 04 Step **5b**: agent runs `apollo-enrich.py` for emails — not the user)
 6. **Pain & Opportunity Mapping** — connect observable symptoms to the problems Cyvore solves
 7. **Competitive Context** — read `context/competitive-landscape.md` for the matched ICP, identify what they use today, classify as displacing/supplementing/pioneering, build the competitive table, write discovery questions, flag risks
 8. **Account Summary** — 150-250 word synthesis readable in 60 seconds
@@ -255,6 +255,7 @@ Uses the full Skill 04 output schema with three additions at the top (source, IC
 - [ ] If Tier 1 or Tier 2: `target-accounts.md` has been updated
 - [ ] Next action is specific — names a person, a skill to run, or a signal to monitor
 - [ ] Research gaps are listed so the user knows what to verify manually
+- [ ] Apollo enrichment was attempted for named contacts per Skill 04 Step 5b, or documented if skipped
 
 ---
 

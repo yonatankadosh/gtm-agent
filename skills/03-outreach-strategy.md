@@ -24,6 +24,10 @@ Write to `output/outreach/{company-slug}.md`
 
 ## Methodology
 
+### Step 0: Verify Contact Emails (agent executes)
+
+Before drafting outreach, confirm work emails for all target contacts in the research file's Key People table. If any are missing, **you (the agent) must run** `python3 tools/apollo-enrich.py enrich` (or `search` then `enrich`) in the terminal — do not ask the user to run Apollo. Populate the Sequence Overview and any email-touch rows with verified addresses when available. If enrichment fails, keep LinkedIn-only touches and note the gap in Internal Notes.
+
 ### Step 1: Angle Selection
 
 Before writing a single word, lock in the angle. The angle is the one reason this person should care about hearing from you, right now, given what's happening in their world.
@@ -220,6 +224,7 @@ Angle type: [trigger / pain / outcome / insight / peer]
 - [ ] The CTA is calibrated for cold outreach — low friction, not a 45-min demo request
 - [ ] You can answer: "Why this person, why this angle, why now?"
 - [ ] Email is 75-120 words. LinkedIn DM is 50-80 words. No exceptions.
+- [ ] For email touches, the agent ran Apollo enrichment when addresses were missing (or documented why not)
 
 ## Relationship to Other Skills
 

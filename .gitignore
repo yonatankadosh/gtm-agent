@@ -16,6 +16,9 @@ output/meeting-prep/*
 !output/outreach/.gitkeep
 !output/meeting-prep/.gitkeep
 
+# Email credentials
+tools/email-config.json
+
 # macOS
 .DS_Store
 

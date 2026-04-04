@@ -94,6 +94,8 @@ Map the people involved in a decision like yours.
 
 For each key person, note: name, title, tenure, LinkedIn activity or recent posts, and any signals of pain or initiative relevant to your product.
 
+**5b. Enrich contacts (agent executes — not the user):** The agent must run Apollo in the terminal for this account's domain. For each key contact with a known full name, run `python3 tools/apollo-enrich.py enrich --domain [domain] --name "[Full Name]"` and add the returned work email to the Key People table. If only a title is known (e.g., "CISO"), run `python3 tools/apollo-enrich.py search --domain [domain] --title "[title]"` first (free), pick the best match, then run `enrich` for that person. Do not ask the user to run Apollo manually. If the tool fails (missing API key, no match), record "needs verification" in the table and list it under Research Gaps.
+
 **So what:** Who is the right first contact? What's their likely priority right now?
 
 ### Step 6: Pain & Opportunity Mapping
@@ -256,6 +258,7 @@ Based on the research, recommend the single best next step:
 - [ ] The next action is specific and actionable
 - [ ] You haven't reported facts without interpreting what they mean commercially ("So what")
 - [ ] Research gaps are listed so the user knows what to verify manually
+- [ ] Apollo enrichment was attempted for named buying-committee contacts (agent ran `apollo-enrich.py`), or failure is documented in Research Gaps
 
 ## Relationship to Other Skills
 

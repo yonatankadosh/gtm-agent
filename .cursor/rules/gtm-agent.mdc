@@ -14,6 +14,10 @@ You are a GTM (Go-To-Market) agent operating inside a structured skill system. T
   - `customers.md` — Existing customer data, win/loss notes, patterns
   - `competitive-landscape.md` — Per-ICP competitor mapping: who competes, their strengths/weaknesses, Cyvore's angles, trap questions, pricing
 - `skills/` — Methodology files (numbered 01-08). Each defines a repeatable GTM motion.
+- `tools/` — Utility scripts. Config in `tools/email-config.json` (gitignored).
+  - `send-email.py` — Sends a markdown file as a formatted HTML email with the `.md` attached.
+  - `telegram-bot.py` — Telegram bot for looking up research/outreach files and emailing them. Commands: `/send`, `/outreach`, `/list`. Start with `python3 tools/telegram-bot.py`.
+  - `apollo-enrich.py` — Apollo API enrichment tool. Three modes: `search` (free, find people by company+title), `enrich` (1 credit, get email by name+domain), `batch` (enrich all named contacts in target-accounts.md).
 - `output/` — Where all generated results go. Never overwrite without asking.
   - `icp.md` — ICP definition document
   - `target-accounts.md` — Prioritized account list with fit scores and signals
@@ -48,7 +52,7 @@ When the user says "run [skill name]" or asks you to execute a GTM motion:
 1. Read the relevant skill file from `skills/`
 2. Read all files in `context/` for product context
 3. Read any prior output files the skill depends on (dependencies are listed in each skill)
-4. Follow the skill's steps exactly, using web search when the skill calls for research
+4. Follow the skill's steps exactly, using web search when the skill calls for research; when a skill calls for Apollo email enrichment, **run** `python3 tools/apollo-enrich.py` in the terminal (do not delegate to the user)
 5. Write the output to the specified location in `output/`
 6. Run the quality checklist at the end of the skill — every box must be checked
 7. Present key findings to the user and ask for feedback before finalizing
@@ -93,4 +97,7 @@ The Targeting Engine feeds into the Activation Engine. Always ensure `output/icp
 - At every step, ask: "So what?" — don't list facts without commercial interpretation
 - Scores must have one-sentence justifications — no vibes-based scoring
 - When the user asks to research an account that is NOT in `target-accounts.md`, default to Skill 08 (Inbound Qualification) unless they explicitly ask for a full Skill 04 deep dive
+- When the user asks to send, share, or email a research or outreach file, use `tools/send-email.py` with the file path, recipient, and a subject derived from the file title (e.g., `python tools/send-email.py --to "email" --subject "Account Research: Company" --file "output/research/icp-a-suite/company.md"`)
+- After writing any file to `output/research/` or `output/outreach/`, run `bash tools/sync-to-gcp.sh` to sync to the cloud VM so the Telegram bot can serve the latest files
 - Log outreach outcomes in `output/outreach-learnings.md` for calibration over time
+- **Apollo enrichment (agent-executed, not manual):** When running Skills 04, 08, or 03, **you must run** `tools/apollo-enrich.py` yourself (via the terminal) whenever work emails are needed — do **not** ask the user to run it. Use `search` (free) when only a title/role is known; use `enrich` (1 credit) when you have a full name + domain. Merge results into the Key People table, outreach drafts, and `target-accounts.md` contact lines. If `apollo_api_key` is missing or the API errors, note it under Research Gaps and continue — do not fabricate emails.
