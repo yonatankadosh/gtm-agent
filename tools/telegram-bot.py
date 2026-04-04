@@ -333,7 +333,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_access(update):
         return
     help_text = (
-        "🎯 <b>GTM Research Bot</b>\n\n"
+        "🫆 <b>Cyvore GTM-Agent Bot</b>\n\n"
         "<b>Commands:</b>\n"
         "/send &lt;company&gt; — email research to your default email\n"
         "/send &lt;company&gt; to email — email to a specific address\n"

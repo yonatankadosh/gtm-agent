@@ -87,6 +87,6 @@ for d in output/outreach/icp-*/; do
 done
 
 echo "  Installing deps & restarting bot..."
-remote_cmd "cd $REMOTE && pip3 install -q -r requirements.txt 2>/dev/null; sudo systemctl restart gtm-bot 2>/dev/null || echo 'NOTE: gtm-bot systemd service not set up yet — run tools/vm-restart-bot.sh on the VM to start manually'"
+remote_cmd "cd $REMOTE && pip3 install --break-system-packages -q -r requirements.txt 2>/dev/null; sudo systemctl restart gtm-bot 2>/dev/null || echo 'NOTE: gtm-bot systemd service not set up yet — run tools/vm-restart-bot.sh on the VM to start manually'"
 
 echo "=== Sync complete ==="

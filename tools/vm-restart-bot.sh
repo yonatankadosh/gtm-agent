@@ -11,7 +11,7 @@ ROOT="${HOME}/gtm-agent"
 cd "$ROOT"
 
 echo "Installing deps from ${ROOT}/requirements.txt ..."
-pip3 install -q -r requirements.txt
+pip3 install --break-system-packages -q -r requirements.txt
 
 if systemctl is-active --quiet gtm-bot 2>/dev/null; then
   echo "Restarting gtm-bot service..."
