@@ -8,7 +8,7 @@ Prepare a comprehensive pre-meeting brief for any sales or discovery call. The b
 
 - `context/product-overview.md` (required)
 - `output/icp.md` (required)
-- `output/research/{company-slug}.md` (required — run Skill 04 first)
+- `output/research/{icp-folder}/{slug}.md` (required — run Skill 04 first; see slug convention in Skill 04)
 - **Meeting details** — who's attending, what type of meeting (discovery, demo, follow-up, proposal), any prior conversation context
 
 ## Dependencies

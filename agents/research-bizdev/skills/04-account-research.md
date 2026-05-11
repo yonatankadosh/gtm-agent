@@ -18,7 +18,13 @@ Build a deep, actionable commercial picture of a target account before outreach,
 
 ## Output
 
-Write to `output/research/{company-slug}.md`
+Write to `output/research/{icp-folder}/{slug}.md`.
+
+**Slug convention** (canonical, used by every agent that touches accounts):
+- `{slug}` is the company's primary domain stem, lowercased and hyphenated. E.g. `mcafee.com` → `mcafee`, `deutsche-telekom.com` → `deutsche-telekom`. If the company has no clear domain, use the company name lowercased with spaces replaced by hyphens.
+- `{icp-folder}` is one of: `icp-a-suite`, `icp-b-feed`, `icp-c-marketplace`, `icp-d-telecom`. If the account's ICP is not yet determined (e.g., this is the first time you've researched it and you don't know the fit), use `uncategorized` and surface the ICP question to the user.
+
+This is the same path convention used by Skill 08 (Inbound Qualification). Sales' pipeline-maintenance skill joins HubSpot deals to research files using this slug.
 
 ---
 
@@ -96,7 +102,17 @@ For each key person, note: name, title, tenure, LinkedIn activity or recent post
 
 **5b. Enrich contacts (agent executes — not the user):** The agent must run Apollo in the terminal for this account's domain. For each key contact with a known full name, run `python3 tools/apollo-enrich.py enrich --domain [domain] --name "[Full Name]"` and add the returned work email to the Key People table. If only a title is known (e.g., "CISO"), run `python3 tools/apollo-enrich.py search --domain [domain] --title "[title]"` first (free), pick the best match, then run `enrich` for that person. Do not ask the user to run Apollo manually. If the tool fails (missing API key, no match), record "needs verification" in the table and list it under Research Gaps.
 
-**So what:** Who is the right first contact? What's their likely priority right now?
+**5c. Israel approach paths (mandatory subsection — never omit):** Cyvore is Tel Aviv-based; the Israeli tech network is a structural GTM advantage. Before completing Step 5, run targeted web searches to identify every Israel-based connection that could shorten the path to this account. Cover at minimum:
+
+1. **Israel-based employees of the target.** Search LinkedIn / Crunchbase / company "About" pages for security, T&S, engineering, or executive roles based in Israel (Tel Aviv, Herzliya, Haifa, Jerusalem, Beer Sheva). Capture name, title, location, languages (Hebrew = strong signal), and notable past employers (Unit 8200, Technion, IDF intelligence, ex-Israeli scale-up).
+2. **Israeli investors, board members, advisors.** Check the cap table, board roster, and any disclosed advisors for Israeli VCs (Aleph, Pitango, 83North, Vintage, OurCrowd, Insight Israel, Benchmark Israel, Sequoia Israel, etc.) or Israeli-resident individuals on the board.
+3. **Israeli vendors in the target's stack.** Identify security/infra vendors the target uses that are Israeli-founded — Wiz, Check Point, SentinelOne, Cyera, Aqua Security, Snyk, Orca, Island, Axonius, Coralogix, JFrog, etc. Shared-vendor relationships unlock warm intros via the vendor's account team and Israeli founder networks.
+4. **Israeli acquisitions or partnerships.** Has the target acquired or partnered with any Israeli company? Operates an Israeli R&D center? Sponsors Israeli conferences (CyberWeek TAU, Tel Aviv DevCon)?
+5. **Cyvore-network overlaps.** Cross-reference against `context/customers.md` (existing Cyvore customers — Fiverr, Cato, Moovit, INCD, Mizrahi-Tefahot, Bloomberg, MAX, Giraffe, LXP), Cyvore's investors (1948VC, Ineffable VC), and any known shared board members, founders' alumni (Unit 8200/Talpiot/Technion), or RSA/BSides Tel Aviv connections.
+
+Output this as a dedicated **"Israel Approach Paths"** subsection under Key People in the schema (see Output Schema below). For each path identified, add a one-line "How to use it" — e.g., "Ask [Cyvore customer's CISO] for a warm intro to [target CISO] — both ex-Unit 8200." If after honest search no Israel path exists, write **"No Israel-based approach path identified"** explicitly and list what you searched — never silently omit the subsection.
+
+**So what:** Who is the right first contact? What's their likely priority right now? **And which Israel-based connection is the shortest path to a warm intro?**
 
 ### Step 6: Pain & Opportunity Mapping
 
@@ -223,6 +239,16 @@ Based on the research, recommend the single best next step:
 | Economic buyer | ... | ... | ... | ... |
 | Influencer | ... | ... | ... | ... |
 
+### Israel Approach Paths
+Mandatory subsection — never omit. List every Israel-based path that shortens access to this account. If none after honest search, write "No Israel-based approach path identified" and list what was searched.
+
+| Type | Person / Entity | Connection | How to use it |
+|---|---|---|---|
+| Target employee (Israel) | ... | ... | ... |
+| Investor / board (Israel) | ... | ... | ... |
+| Shared Israeli vendor | ... | ... | ... |
+| Cyvore network overlap | ... | ... | ... |
+
 ## Pain & Opportunity
 [Value proposition mapping paragraph]
 
@@ -259,6 +285,7 @@ Based on the research, recommend the single best next step:
 - [ ] You haven't reported facts without interpreting what they mean commercially ("So what")
 - [ ] Research gaps are listed so the user knows what to verify manually
 - [ ] Apollo enrichment was attempted for named buying-committee contacts (agent ran `apollo-enrich.py`), or failure is documented in Research Gaps
+- [ ] **Israel Approach Paths subsection is present** — either with concrete connections (employees, investors, shared vendors, Cyvore-network overlaps) or an explicit "No Israel-based approach path identified" with a list of what was searched. The subsection is never silently omitted.
 
 ## Relationship to Other Skills
 

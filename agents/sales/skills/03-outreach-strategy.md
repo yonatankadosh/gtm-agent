@@ -8,7 +8,7 @@ Build a full outreach plan for any target account — the angle, the sequence, t
 
 - `context/product-overview.md` (required)
 - `output/icp.md` (required)
-- `output/research/{company-slug}.md` (required — run Skill 04 first)
+- `output/research/{icp-folder}/{slug}.md` (required — run Skill 04 first; see slug convention in Skill 04)
 - `output/outreach-strategy.md` (optional — if a general strategy exists, use it to align messaging angles)
 
 ## Dependencies
@@ -18,7 +18,7 @@ Build a full outreach plan for any target account — the angle, the sequence, t
 
 ## Output
 
-Write to `output/outreach/{company-slug}.md`
+Write to `output/outreach/{icp-folder}/{slug}.md` — same `{icp-folder}/{slug}` pair used by the matching research file (e.g. research at `output/research/icp-a-suite/trustpilot.md` → outreach at `output/outreach/icp-a-suite/trustpilot.md`).
 
 ---
 

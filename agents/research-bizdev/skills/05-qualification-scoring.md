@@ -7,7 +7,7 @@ Score any company across four dimensions — Fit, Timing, Access, Intent — and
 ## Inputs
 
 - `output/icp.md` (required)
-- `output/research/{company-slug}.md` (required — run Skill 04 first)
+- `output/research/{icp-folder}/{slug}.md` (required — run Skill 04 first; see slug convention in Skill 04)
 
 ## Dependencies
 
@@ -16,7 +16,7 @@ Score any company across four dimensions — Fit, Timing, Access, Intent — and
 
 ## Output
 
-Append the score to the existing research file: `output/research/{company-slug}.md`
+Append the score to the existing research file: `output/research/{icp-folder}/{slug}.md` — the same path Skill 04 wrote.
 
 ---
 

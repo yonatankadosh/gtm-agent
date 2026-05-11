@@ -70,21 +70,50 @@ GTM-agent/
   context/                              # Your product context (gitignored)
     product-overview.template.md        # Template — copy to .md and fill in
     customers.template.md               # Template — copy to .md and fill in
-  skills/                               # Methodology files (the engine)
-    01-icp-definition.md
-    02-prospecting.md
-    03-outreach-strategy.md
-    04-account-research.md
-    05-qualification-scoring.md
-    06-signal-outbound.md
-    07-meeting-prep.md
+  agents/                               # The agent layer
+    orchestrator.md                     # Routing & composition contract
+    research-bizdev/
+      AGENT.md
+      skills/                           # Owned primitives (inherited + extensions)
+        01-icp-definition.md
+        02-prospecting.md
+        04-account-research.md
+        05-qualification-scoring.md
+        08-inbound-qualification.md
+    sales/
+      AGENT.md
+      skills/
+        03-outreach-strategy.md
+        06-signal-outbound.md
+        pipeline-maintenance.md
+    chief-of-staff/
+      AGENT.md
+      skills/
+        07-meeting-prep.md
+        exec-comms.md
+        weekly-context.md
+      templates/                        # Reusable comms templates
+    marketing/, cs/, partnerships/      # Each with AGENT.md + skills/
+  state/                                # Persistent qualitative memory (gitignored)
+    weekly-context.md
+    okrs.md
   output/                               # Generated results (gitignored)
-    research/                           # Per-account research
-    outreach/                           # Per-account outreach drafts
-    meeting-prep/                       # Pre-meeting briefs
-  .cursor/rules/
-    gtm-agent.mdc                       # Cursor rule — auto-loaded
+    research/{icp}/{slug}.md            # Per-account research
+    outreach/{icp}/{slug}.md            # Per-account outreach drafts
+    meeting-prep/{slug}-{date}.md       # Pre-meeting briefs
+    pipeline/{YYYY-WW}.md               # Weekly pipeline snapshots
+    exec-comms/{audience}/{date}.md     # Digests, board, investor, all-hands
+    marketing/, partnerships/, cs/      # Per-agent artifacts
+  tools/
+    send-email.py
+    telegram-bot.py
+    apollo-enrich.py
+  .cursor/
+    rules/gtm-agent.mdc                 # Cursor rule — auto-loaded
+    mcp.json                            # HubSpot MCP config (gitignored)
 ```
+
+The system has two layers. The **primitives** are the methodology files described in the tables above (Skills 01–08) — these are the GTM motions, owned by the relevant agent and read by reference. The **agent layer** sits on top: a single Orchestrator routes user intents to specialized agents (Research & BizDev, Sales, Chief of Staff, Marketing, CS, Partnerships), each of which inherits its primitives and adds its own extensions (e.g. Sales adds `pipeline-maintenance`, Chief of Staff adds `exec-comms` and `weekly-context`). See [agents/orchestrator.md](agents/orchestrator.md) for the full routing table.
 
 ## Requirements
 

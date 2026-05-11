@@ -2,13 +2,26 @@
 """
 Telegram bot for looking up GTM research/outreach files and emailing them.
 
-Commands:
+Account-level commands:
     /send cyera                         -- email Cyera research to default recipient
     /send cyera to name@example.com     -- email to specific recipient
     /outreach cyera                     -- email Cyera outreach instead of research
     /outreach cyera to name@example.com
     /list                               -- list all companies with research
     /list icp-a                         -- list companies in a specific ICP
+
+Cadence commands (deliver the latest agent output by audience):
+    /pipeline                           -- email the latest weekly pipeline snapshot
+    /digest    (or /weekly)             -- email the latest internal weekly digest
+    /board                              -- email the latest quarterly board update
+    /investor                           -- email the latest monthly investor letter
+    /allhands                           -- email the latest all-hands script
+
+Each cadence command serves the latest file from the matching agent output
+folder (`output/pipeline/` for /pipeline, `output/exec-comms/{audience}/` for
+the others). The artifacts themselves are produced inside Cursor by the
+relevant agent (Sales for pipeline, Chief of Staff for the rest).
+
     /help                               -- show available commands
 
 Start with:  python3 tools/telegram-bot.py
@@ -44,6 +57,8 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 CONFIG_PATH = SCRIPT_DIR / "email-config.json"
 RESEARCH_DIR = PROJECT_ROOT / "output" / "research"
 OUTREACH_DIR = PROJECT_ROOT / "output" / "outreach"
+PIPELINE_DIR = PROJECT_ROOT / "output" / "pipeline"
+EXEC_COMMS_DIR = PROJECT_ROOT / "output" / "exec-comms"
 
 ICP_FOLDERS = {
     "icp-a": "icp-a-suite",
@@ -123,6 +138,23 @@ def find_files(base_dir: Path) -> dict[str, Path]:
                 continue
             results[md_file.stem] = md_file
     return results
+
+
+def find_latest_dated_file(directory: Path) -> Path | None:
+    """Return the most recently modified .md file in `directory` (excluding .gitkeep).
+
+    Used by cadence commands (/pipeline, /digest, /board, /investor, /allhands)
+    which serve the most recent artifact written by the relevant agent.
+    """
+    if not directory.exists():
+        return None
+    candidates = [
+        p for p in directory.glob("*.md")
+        if p.name != ".gitkeep" and p.is_file()
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def fuzzy_match(query: str, candidates: dict[str, Path], threshold: float = 0.5) -> list[tuple[str, Path, float]]:
@@ -328,24 +360,107 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("".join(parts), parse_mode="HTML")
 
 
+async def _send_latest_cadence(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    directory: Path,
+    label: str,
+    subject_prefix: str,
+) -> None:
+    """Shared handler for cadence commands: find latest .md in `directory` and email it."""
+    if not await check_access(update):
+        return
+    config = load_config()
+    args_text = " ".join(context.args) if context.args else ""
+
+    email_match = re.search(r"[\w.+-]+@[\w.-]+", args_text)
+    recipient = email_match.group(0) if email_match else config.get("default_recipient")
+    if not recipient:
+        await update.message.reply_text("No recipient specified and no default_recipient in config.")
+        return
+
+    latest = find_latest_dated_file(directory)
+    if latest is None:
+        await update.message.reply_text(
+            f"No {label} file found in {directory.relative_to(PROJECT_ROOT)}.\n\n"
+            f"In Cursor, ask the agent to produce the latest {label} first."
+        )
+        return
+
+    subject = f"{subject_prefix}: {latest.stem}"
+    try:
+        status = send_email(config, recipient, subject, latest)
+        await update.message.reply_text(
+            f"✅ {status}\n📄 {label} ({latest.name})\n📧 Subject: {subject}"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Failed to send: {e}")
+
+
+async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /pipeline — email the latest weekly pipeline snapshot."""
+    await _send_latest_cadence(
+        update, context, PIPELINE_DIR, "weekly pipeline snapshot", "Pipeline Snapshot"
+    )
+
+
+async def cmd_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /digest and /weekly — email the latest internal weekly digest."""
+    await _send_latest_cadence(
+        update, context, EXEC_COMMS_DIR / "weekly", "weekly digest", "Weekly Digest"
+    )
+
+
+async def cmd_board(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /board — email the latest quarterly board update."""
+    await _send_latest_cadence(
+        update, context, EXEC_COMMS_DIR / "board", "board update", "Board Update"
+    )
+
+
+async def cmd_investor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /investor — email the latest monthly investor letter."""
+    await _send_latest_cadence(
+        update, context, EXEC_COMMS_DIR / "investor", "investor letter", "Investor Update"
+    )
+
+
+async def cmd_allhands(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /allhands — email the latest all-hands script."""
+    await _send_latest_cadence(
+        update, context, EXEC_COMMS_DIR / "all-hands", "all-hands script", "All-Hands Update"
+    )
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help and /start commands."""
     if not await check_access(update):
         return
     help_text = (
         "🫆 <b>Cyvore GTM-Agent Bot</b>\n\n"
-        "<b>Commands:</b>\n"
+        "<b>Account commands:</b>\n"
         "/send &lt;company&gt; — email research to your default email\n"
         "/send &lt;company&gt; to email — email to a specific address\n"
         "/outreach &lt;company&gt; — email outreach plan\n"
         "/list — show all companies with files\n"
-        "/list icp-a — filter by ICP (icp-a, icp-b, icp-c, icp-d)\n"
+        "/list icp-a — filter by ICP (icp-a, icp-b, icp-c, icp-d)\n\n"
+        "<b>Cadence commands</b> (latest agent output):\n"
+        "/pipeline — latest weekly pipeline snapshot\n"
+        "/digest (or /weekly) — latest internal weekly digest\n"
+        "/board — latest quarterly board update\n"
+        "/investor — latest monthly investor letter\n"
+        "/allhands — latest all-hands script\n\n"
         "/help — show this message\n\n"
         "<b>Examples:</b>\n"
         "<code>/send cyera</code>\n"
         "<code>/send bezeq to colleague@company.com</code>\n"
         "<code>/outreach bank hapoalim</code>\n"
-        "<code>/list icp-b</code>"
+        "<code>/list icp-b</code>\n"
+        "<code>/pipeline</code>\n"
+        "<code>/digest to chair@board.com</code>\n\n"
+        "Cadence files are produced inside Cursor by the relevant agent "
+        "(Sales for /pipeline, Chief of Staff for the rest). "
+        "Run `run weekly` in Cursor first if a file is missing."
     )
     await update.message.reply_text(help_text, parse_mode="HTML")
 
@@ -388,6 +503,12 @@ def main():
     app.add_handler(CommandHandler("send", cmd_send))
     app.add_handler(CommandHandler("outreach", cmd_outreach))
     app.add_handler(CommandHandler("list", cmd_list))
+    app.add_handler(CommandHandler("pipeline", cmd_pipeline))
+    app.add_handler(CommandHandler("digest", cmd_digest))
+    app.add_handler(CommandHandler("weekly", cmd_digest))
+    app.add_handler(CommandHandler("board", cmd_board))
+    app.add_handler(CommandHandler("investor", cmd_investor))
+    app.add_handler(CommandHandler("allhands", cmd_allhands))
 
     logger.info("Bot starting... Press Ctrl+C to stop.")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)

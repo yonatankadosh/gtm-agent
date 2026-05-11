@@ -9,28 +9,31 @@ You are a GTM (Go-To-Market) agent operating inside a structured skill system. T
 
 ## Project Structure
 
-- `context/` — Product context files. Read these before executing any skill.
+- `context/` — Product context files. Loaded by every agent at start of any task.
   - `product-overview.md` — Core product description, value prop, differentiators, pricing
   - `customers.md` — Existing customer data, win/loss notes, patterns
-  - `competitive-landscape.md` — Per-ICP competitor mapping: who competes, their strengths/weaknesses, Cyvore's angles, trap questions, pricing
-- `skills/` — Methodology files (numbered 01-08). Each defines a repeatable GTM motion.
+  - `competitive-landscape.md` — Per-ICP competitor mapping (read only the ICP section relevant to the task)
+- `agents/` — One folder per agent. Each contains an `AGENT.md` (identity, scope, and methodology entry point) plus a `skills/` subfolder holding every primitive that agent owns — both inherited methodology (numbered 01-08, the original GTM motions) and agent-specific extensions (e.g. `pipeline-maintenance.md`, `exec-comms.md`). The numbered skills are primitives: agents read them by reference and don't rewrite them. See "Agents and Knowledge-Base Map" below.
+- `state/` — **Gitignored**, persistent qualitative memory. Small, hand- or interview-curated.
+  - `weekly-context.md` — Most recent on top, populated by Chief of Staff's weekly-context interview
+  - `okrs.md` — Current quarter objectives (optional, hand-maintained)
 - `tools/` — Utility scripts. Config in `tools/email-config.json` (gitignored).
   - `send-email.py` — Sends a markdown file as a formatted HTML email with the `.md` attached.
   - `telegram-bot.py` — Telegram bot for looking up research/outreach files and emailing them. Commands: `/send`, `/outreach`, `/list`. Start with `python3 tools/telegram-bot.py`.
   - `apollo-enrich.py` — Apollo API enrichment tool. Three modes: `search` (free, find people by company+title), `enrich` (1 credit, get email by name+domain), `batch` (enrich all named contacts in target-accounts.md).
-- `output/` — Where all generated results go. Never overwrite without asking.
-  - `icp.md` — ICP definition document
-  - `target-accounts.md` — Prioritized account list with fit scores and signals
-  - `outreach-strategy.md` — General outreach playbook (channel strategy, messaging angles)
-  - `research/` — Per-account research, organized by ICP:
-    - `icp-a-suite/` — Full Suite accounts
-    - `icp-b-feed/` — Intel Feed accounts
-    - `icp-c-marketplace/` — Marketplace Chat accounts
-    - `icp-d-telecom/` — Telecom accounts
-  - `outreach/` — Per-account outreach drafts, same ICP structure:
-    - `icp-a-suite/`, `icp-b-feed/`, `icp-c-marketplace/`, `icp-d-telecom/`
-  - `meeting-prep/` — Pre-meeting briefs (named `{company-slug}-{date}.md`)
-  - `outreach-learnings.md` — Signal-to-outcome log for calibration over time
+- `output/` — Where all generated results go. Each agent owns a slice; agents never write outside their slice.
+  - `icp.md` — ICP definition document (Research & BizDev)
+  - `target-accounts.md` — Prioritized account list (Research & BizDev)
+  - `outreach-strategy.md` — General outreach playbook (Sales)
+  - `outreach-learnings.md` — Signal-to-outcome log (Sales)
+  - `research/{icp-folder}/{slug}.md` — Per-account research (Research & BizDev). ICP folders: `icp-a-suite`, `icp-b-feed`, `icp-c-marketplace`, `icp-d-telecom`, `uncategorized`.
+  - `outreach/{icp-folder}/{slug}.md` — Per-account outreach (Sales)
+  - `meeting-prep/{slug}-{date}.md` — Pre-meeting briefs for any meeting type, sales/partner/investor/all-hands (Chief of Staff)
+  - `pipeline/{YYYY-WW}.md` — Weekly pipeline snapshot (Sales)
+  - `exec-comms/{weekly|board|investor|all-hands}/{date}.md` — Audience-specific comms (Chief of Staff)
+  - `marketing/{content|linkedin}/` — Marketing artifacts (Marketing)
+  - `partnerships/` — Partner mapping, co-sell plans (Partnerships)
+  - `cs/` — Customer health, expansion plans, churn risk (Customer Success)
 
 ## Skills
 
@@ -45,11 +48,89 @@ You are a GTM (Go-To-Market) agent operating inside a structured skill system. T
 | 07 | Meeting Prep | Pre-meeting brief — attendee profiles, prepared questions, objection anticipation, meeting flow | Activation |
 | 08 | Inbound Qualification | Full research + qualification of unknown accounts — ICP classification, full Skill 04 research, score, and route (Tier 1 / Tier 2 / Pass) | Activation |
 
+## Agents and Knowledge-Base Map
+
+The system is a multi-agent orchestration. **The user only ever talks to the Orchestrator.** The Orchestrator parses intent, dispatches one or more sub-agents (each in a fresh context window), reads their outputs from disk, and replies to the user.
+
+### Agent map
+
+| Agent | Owns | Inherits skills | HubSpot access |
+|---|---|---|---|
+| **Research & BizDev** | `output/research/`, `output/icp.md`, `output/target-accounts.md` | 01, 02, 04, 05, 08 | none |
+| **Sales** | `output/outreach/`, `output/outreach-strategy.md`, `output/outreach-learnings.md`, `output/pipeline/` | 03, 06 + pipeline-maintenance | **read+write** (only agent that writes; writes require user confirmation) |
+| **Chief of Staff** | `output/meeting-prep/`, `output/exec-comms/`, `state/weekly-context.md` | 07 + exec-comms + weekly-context (all comms: sales meetings, partner meetings, investor letters, board updates, all-hands, weekly digest) | none (reads pipeline via Sales' snapshot file) |
+| **Marketing** | `output/marketing/` | new (content + LinkedIn) | none |
+| **Partnerships** | `output/partnerships/` | new | none |
+| **Customer Success** | `output/cs/` | new (post-sale only — health, expansion, churn) | read-only |
+| **Orchestrator** | `agents/orchestrator.md` (routing rules; no `output/` writes) | none | none |
+
+### Knowledge-base scopes (per agent)
+
+Every agent loads the **common context** at start of any task:
+- `context/product-overview.md`
+- `context/customers.md`
+- `context/competitive-landscape.md` (only the ICP section relevant to the task)
+- `output/icp.md`
+- `state/weekly-context.md`
+- `state/okrs.md`
+
+Beyond the common context, each agent has **always-reads** (loaded every invocation) and **on-demand reads** (fetched by exact path when needed):
+
+- **Research & BizDev** — always: common; on-demand: `output/target-accounts.md`, prior `output/research/{icp}/{slug}.md` (only when updating an existing account).
+- **Sales** — always: common + `output/target-accounts.md` + `output/outreach-strategy.md`; on-demand: `output/research/{icp}/{slug}.md` for the current account, prior `output/outreach/{icp}/{slug}.md`, HubSpot via MCP.
+- **Chief of Staff** — always: common + `state/weekly-context.md` + `state/okrs.md`; on-demand: latest `output/pipeline/{YYYY-WW}.md`, `output/research/{icp}/{slug}.md` for the meeting target, prior `output/meeting-prep/`, prior `output/exec-comms/`, `output/outreach-learnings.md`.
+- **Marketing** — always: common + `output/outreach-strategy.md`; on-demand: `output/research/{icp}/{slug}.md` for account-specific content, `output/cs/` customer stories.
+- **Partnerships** — always: common + `output/target-accounts.md`; on-demand: `output/research/{icp}/{slug}.md` when partner overlaps a target.
+- **Customer Success** — always: common; on-demand: `output/research/{icp}/{slug}.md` for accounts that became customers (history continuity), HubSpot via MCP for closed-won customer list.
+
+### The shared-research rule (enforced in every AGENT.md)
+
+> You may read research files only by exact path (`output/research/{icp-folder}/{slug}.md`). If the file you need does not exist, stop and return to the Orchestrator with the message: "I need research on `{slug}`. Should I route to Research and BizDev first?" Do not glob the research tree, do not read multiple research files speculatively, do not summarize the whole research corpus.
+
+This is the discipline that keeps context bounded across the whole system. Every agent inherits this rule.
+
+### HubSpot via MCP
+
+Sales is the only agent with HubSpot read+write access. Customer Success has read-only access for the closed-won customer list. No other agent talks to HubSpot.
+
+The connection runs through the community **`mcp-remote`** npm package as a stdio-to-HTTP bridge — necessary because HubSpot's MCP and Cursor's native OAuth client are mutually incompatible (HubSpot doesn't support DCR; HubSpot's auth-app form rejects Cursor's custom-protocol redirect URI; HubSpot's auth-server discovery returns the bare URL even for regional portals). Setup is one-time and documented in full at [agents/sales/AGENT.md](agents/sales/AGENT.md) — including the working `mcp.json` shape, the multi-instance race that requires inline credentials and a pinned port, the `pkill -9 -f mcp-remote && rm -rf ~/.mcp-auth` recovery drill, and why the URL must be the bare `https://mcp.hubspot.com/` (not the regional URL HubSpot's UI shows).
+
+Verify a fresh connection by asking in a **new** chat: "list my open deals from HubSpot." (Existing chats won't see new MCP tools — they're loaded at session start.)
+
+HubSpot writes (logging notes, creating tasks, changing stages) **must always be confirmed by the user in chat** before the agent calls the MCP write tool — never silent.
+
+### Dry-run mode
+
+The repo includes an isolated sandbox at `dry-run/` (gitignored) that mirrors the production layout (`dry-run/output/`, `dry-run/state/`, `dry-run/mocks/`). It exists so end-to-end flows can be exercised — including HubSpot-dependent ones via mock JSON in `dry-run/mocks/` — without touching real `output/`, `state/`, or HubSpot. See `dry-run/README.md` for the full contract.
+
+When the user explicitly says **"dry-run"**, **"test this flow"**, **"sandbox"**, or asks to validate the system without affecting real outputs, switch every agent's read/write root for that turn from `output/` → `dry-run/output/` and from `state/` → `dry-run/state/`. HubSpot reads come from `dry-run/mocks/hubspot-deals.json` (parsed as if it were the MCP response); HubSpot writes are **never executed in dry-run** — the agent only drafts the proposed write, shows the confirmation language, and stops. All other rules (shared-research, anti-fabrication, write-confirmation, slug convention) apply unchanged.
+
+When dry-run is **not** explicitly requested, agents always operate on the real `output/` and `state/` and `dry-run/` is invisible to them.
+
+### Trigger phrases (the Orchestrator routes by intent)
+
+Common intents and their routing:
+
+- "Research X" / "Look into X" / "Find new accounts in [segment]" / "Score X" → Research & BizDev
+- "Define / refine our ICP" → Research & BizDev
+- "Draft outreach for X" / "X just did [signal] — go" → Sales (if no research file exists for X, Sales returns to the Orchestrator per the shared-research rule; the Orchestrator confirms with the user, then sequences Research & BizDev → Sales)
+- "Run pipeline review" / "Where does the pipeline stand?" → Sales (pipeline-maintenance)
+- "Prep me for [any meeting]" → Chief of Staff (Skill 07)
+- "Weekly digest" / "Board update" / "Investor letter" / "All-hands" → Chief of Staff (exec-comms)
+- "Weekly context" / "Run weekly check-in" → Chief of Staff (weekly-context)
+- "Write a LinkedIn post" / "Plan a campaign for [topic]" → Marketing
+- "How do we co-sell with X?" / "Partner mapping for [segment]" → Partnerships
+- "Health check on customer X" / "Expansion plan for X" → Customer Success
+- "Run weekly" → composite: weekly-context → pipeline-maintenance → exec-comms (weekly digest)
+- "Run board prep" → composite: pipeline-maintenance (if stale) → exec-comms (board update)
+
+See `agents/orchestrator.md` for the full routing table and composition contracts.
+
 ## How Skills Work
 
 When the user says "run [skill name]" or asks you to execute a GTM motion:
 
-1. Read the relevant skill file from `skills/`
+1. Read the relevant skill file from the owning agent's `agents/{agent}/skills/` folder (the routing table in `agents/orchestrator.md` maps intents → agents → skills)
 2. Read all files in `context/` for product context
 3. Read any prior output files the skill depends on (dependencies are listed in each skill)
 4. Follow the skill's steps exactly, using web search when the skill calls for research; when a skill calls for Apollo email enrichment, **run** `python3 tools/apollo-enrich.py` in the terminal (do not delegate to the user)
@@ -101,3 +182,7 @@ The Targeting Engine feeds into the Activation Engine. Always ensure `output/icp
 - After writing any file to `output/research/` or `output/outreach/`, run `bash tools/sync-to-gcp.sh` to sync to the cloud VM so the Telegram bot can serve the latest files
 - Log outreach outcomes in `output/outreach-learnings.md` for calibration over time
 - **Apollo enrichment (agent-executed, not manual):** When running Skills 04, 08, or 03, **you must run** `tools/apollo-enrich.py` yourself (via the terminal) whenever work emails are needed — do **not** ask the user to run it. Use `search` (free) when only a title/role is known; use `enrich` (1 credit) when you have a full name + domain. Merge results into the Key People table, outreach drafts, and `target-accounts.md` contact lines. If `apollo_api_key` is missing or the API errors, note it under Research Gaps and continue — do not fabricate emails.
+- **HubSpot writes are confirmed, never silent.** When `agents/pipeline-review` or `agents/exec-comms` could log a note, create a task, or change a deal stage in HubSpot via MCP, ALWAYS show the user the proposed change and wait for explicit confirmation before calling the MCP write tool.
+- **Pipeline data comes from HubSpot, not invented.** When running `agents/pipeline-review`, never fabricate stages, amounts, or activity. If HubSpot is empty or sparse, the report is honest about it.
+- **`state/` is gitignored** and contains qualitative business memory. Treat as confidential.
+- **Always include Israel-based approach paths.** Every account research, meeting prep, or qualification output (Skills 02, 04, 07, 08, and any agent that produces Key People) MUST include an explicit "Israel Approach Paths" subsection within Key People. List every Israel-based connection that could shorten the path to the account: (a) Israel-based employees of the target — especially in security, T&S, engineering, or executive roles — with name, title, location, and what makes them reachable; (b) Israeli investors, board members, advisors, or VCs with Israel offices; (c) Israeli companies the target acquired, partners with, or has in its tech stack — including security vendors (Wiz, Check Point, SentinelOne, Cyera, Aqua, Snyk, etc.) since shared-vendor relationships unlock warm intros; (d) Cyvore-network connections (existing customers, mutual investors, Cyvore team's IDF/Unit 8200/Technion/founders' alumni, shared board members). Cyvore is Tel Aviv-based — leveraging this network is a structural advantage, not optional. If after honest web search no Israel-based path exists, write "No Israel-based approach path identified" explicitly and list what was searched — never silently omit the section.

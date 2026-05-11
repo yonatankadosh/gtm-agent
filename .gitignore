@@ -9,12 +9,33 @@ output/*
 !output/research/
 !output/outreach/
 !output/meeting-prep/
+!output/pipeline/
+!output/exec-comms/
 output/research/*
 output/outreach/*
 output/meeting-prep/*
+output/pipeline/*
+output/exec-comms/*
 !output/research/.gitkeep
 !output/outreach/.gitkeep
 !output/meeting-prep/.gitkeep
+!output/pipeline/.gitkeep
+!output/exec-comms/.gitkeep
+!output/exec-comms/weekly/
+!output/exec-comms/board/
+!output/exec-comms/investor/
+!output/exec-comms/all-hands/
+output/exec-comms/weekly/*
+output/exec-comms/board/*
+output/exec-comms/investor/*
+output/exec-comms/all-hands/*
+!output/exec-comms/weekly/.gitkeep
+!output/exec-comms/board/.gitkeep
+!output/exec-comms/investor/.gitkeep
+!output/exec-comms/all-hands/.gitkeep
+
+# Persistent agent state (qualitative business memory — confidential)
+state/
 
 # Email credentials
 tools/email-config.json
@@ -24,3 +45,7 @@ tools/email-config.json
 
 # Cursor
 .cursor/projects/
+.cursor/mcp.json
+
+# Dry-run sandbox (test artifacts, never committed)
+dry-run/

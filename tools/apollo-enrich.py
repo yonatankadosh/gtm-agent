@@ -2,13 +2,34 @@
 """
 Apollo API enrichment tool — find emails for GTM contacts.
 
-Three modes:
+Important: Apollo's /people/match and /people/search BOTH silently ignore
+the `organization_domain(s)` parameter. They only correctly scope to a
+company when given an `organization_id`, so every operation in this tool
+first resolves domain -> Apollo org_id via /organizations/enrich (free).
 
-  Search (free, no credits):
+Recommended (highest hit rate):
+
+  Find — search + reveal email by title at a domain:
+    python tools/apollo-enrich.py find --domain playtika.com
+    python tools/apollo-enrich.py find --domain roblox.com \\
+        --titles "Chief Safety Officer,Head of Trust and Safety"
+
+  Find without spending credits (search only, last names obfuscated):
+    python tools/apollo-enrich.py find --domain playtika.com --no-enrich
+
+Other modes:
+
+  Search (free, no credits, last names obfuscated):
     python tools/apollo-enrich.py search --domain cyera.io --title "CISO"
 
-  Enrich (1 credit per person):
+  Enrich a known person by name (1 credit; resolves org_id automatically):
     python tools/apollo-enrich.py enrich --domain cyera.io --name "Nathan Smolenski"
+    python tools/apollo-enrich.py enrich --domain cyera.io --name "Nathan Smolenski" \\
+        --linkedin https://linkedin.com/in/nathan-smolenski   # strongest match
+
+  Debug any single call (prints raw Apollo response + headers):
+    python tools/apollo-enrich.py enrich --domain x.com --name "..." --debug
+    python tools/apollo-enrich.py find --domain x.com --debug
 
   Batch (reads target-accounts.md, enriches named contacts without emails):
     python tools/apollo-enrich.py batch --file output/target-accounts.md
@@ -31,6 +52,7 @@ CONFIG_PATH = SCRIPT_DIR / "email-config.json"
 
 APOLLO_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
+APOLLO_ORG_ENRICH_URL = "https://api.apollo.io/api/v1/organizations/enrich"
 
 PROJECT_ROOT = SCRIPT_DIR.parent
 
@@ -67,36 +89,115 @@ def headers(api_key: str) -> dict:
     }
 
 # ---------------------------------------------------------------------------
+# Organization resolution (free)
+# ---------------------------------------------------------------------------
+
+# Cache org-id lookups within a single CLI run to avoid repeat calls.
+_ORG_CACHE: dict[str, dict] = {}
+
+
+def resolve_organization(api_key: str, domain: str) -> dict | None:
+    """Resolve a domain to Apollo's internal organization record.
+
+    Critical: Apollo's /people/match and /people/search BOTH ignore the
+    `organization_domain(s)` parameter. They only correctly scope to a
+    company when you pass `organization_id`. So every lookup must start
+    here.
+
+    Returns None if Apollo doesn't know the company.
+    """
+    domain = normalize_domain(domain).lower()
+    if not domain:
+        return None
+    if domain in _ORG_CACHE:
+        return _ORG_CACHE[domain]
+    resp = requests.get(
+        APOLLO_ORG_ENRICH_URL,
+        headers=headers(api_key),
+        params={"domain": domain},
+        timeout=30,
+    )
+    if DEBUG_ENRICH:
+        print(f"\n--- DEBUG: /organizations/enrich domain={domain} status={resp.status_code} ---")
+        try:
+            print(json.dumps(resp.json(), indent=2)[:2000])
+        except Exception:
+            print(resp.text[:1000])
+        print("--- /DEBUG ---\n")
+    resp.raise_for_status()
+    org = (resp.json() or {}).get("organization") or None
+    if org and not org.get("id"):
+        org = None
+    _ORG_CACHE[domain] = org
+    return org
+
+
+# ---------------------------------------------------------------------------
 # Search (free)
 # ---------------------------------------------------------------------------
 
-def search_people(api_key: str, domain: str, title: str | None = None,
-                  seniority: list[str] | None = None, limit: int = 10) -> list[dict]:
-    """Search Apollo for people at a company. Free — no credits consumed."""
+def search_people(
+    api_key: str,
+    domain: str,
+    title: str | None = None,
+    titles: list[str] | None = None,
+    seniority: list[str] | None = None,
+    limit: int = 10,
+) -> list[dict]:
+    """Search Apollo for people at a company. Free — no credits consumed.
+
+    Resolves the domain → Apollo organization_id first. The search endpoint
+    silently ignores `organization_domains` — without an org_id we get
+    global title matches, not people at the company.
+
+    Note: search responses obfuscate last names ("Ra***i"). Call
+    enrich_person_by_id() to reveal the full name + email (1 credit).
+    """
+    org = resolve_organization(api_key, domain)
+    if not org:
+        return []
+
+    title_list = [t for t in (titles or []) if t]
+    if title and title not in title_list:
+        title_list.append(title)
+
     payload: dict = {
-        "organization_domains": [domain],
+        "organization_ids": [org["id"]],
         "page": 1,
         "per_page": min(limit, 25),
     }
-    if title:
-        payload["person_titles"] = [title]
+    if title_list:
+        payload["person_titles"] = title_list
     if seniority:
         payload["person_seniorities"] = seniority
 
     resp = requests.post(APOLLO_SEARCH_URL, headers=headers(api_key), json=payload, timeout=30)
+    if DEBUG_ENRICH:
+        print(f"\n--- DEBUG: /mixed_people/api_search status={resp.status_code} ---")
+        try:
+            print(json.dumps(resp.json(), indent=2)[:3000])
+        except Exception:
+            print(resp.text[:1000])
+        print("--- /DEBUG ---\n")
     resp.raise_for_status()
     data = resp.json()
 
     results = []
     for person in data.get("people", []):
+        # Apollo returns last_name_obfuscated like "Ra***i" until enriched.
+        last_disp = person.get("last_name") or person.get("last_name_obfuscated") or ""
+        first = person.get("first_name") or ""
         results.append({
-            "name": person.get("name", ""),
-            "first_name": person.get("first_name", ""),
+            "id": person.get("id"),
+            "name": (first + " " + last_disp).strip(),
+            "first_name": first,
             "last_name": person.get("last_name", ""),
+            "last_name_display": last_disp,
             "title": person.get("title", ""),
             "linkedin": person.get("linkedin_url", ""),
             "city": person.get("city", ""),
             "country": person.get("country", ""),
+            "organization_name": (person.get("organization") or {}).get("name", org.get("name", "")),
         })
     return results
 
@@ -104,14 +205,17 @@ def search_people(api_key: str, domain: str, title: str | None = None,
 def print_search_results(results: list[dict], domain: str, title: str | None):
     query = f"{title} @ {domain}" if title else domain
     if not results:
-        print(f"No results for: {query}")
+        print(f"No results for: {query}  (verify domain is in Apollo's database)")
         return
     print(f"\n{'='*70}")
     print(f"  Search: {query}  ({len(results)} results, 0 credits used)")
+    print(f"  Note: last names obfuscated until enriched. Use 'find' to unmask.")
     print(f"{'='*70}\n")
     for i, p in enumerate(results, 1):
-        print(f"  {i}. {p['name']}")
+        print(f"  {i}. {p['name']}    [id={p.get('id','?')}]")
         print(f"     Title:    {p['title']}")
+        if p.get("organization_name"):
+            print(f"     Org:      {p['organization_name']}")
         if p["linkedin"]:
             print(f"     LinkedIn: {p['linkedin']}")
         loc = ", ".join(filter(None, [p.get("city"), p.get("country")]))
@@ -123,18 +227,56 @@ def print_search_results(results: list[dict], domain: str, title: str | None):
 # Enrich (1 credit)
 # ---------------------------------------------------------------------------
 
+def _is_real_email(s: str) -> bool:
+    """Filter Apollo's masked / unlocked-placeholder values."""
+    if not s:
+        return False
+    s = s.strip().lower()
+    if "@" not in s:
+        return False
+    bad_markers = (
+        "email_not_unlocked",
+        "domain.com",  # Apollo placeholder
+        "not_unlocked",
+        "email_hidden",
+    )
+    return not any(m in s for m in bad_markers)
+
+
 def extract_work_email_from_person(person: dict) -> str:
-    """Apollo often leaves `person.email` empty but fills `contact_emails`."""
+    """Pull the best work email from Apollo's response.
+
+    Apollo's /people/match response can surface emails in several shapes:
+      - person.email (string, often blank or 'email_not_unlocked@...')
+      - person.contact_emails[] (list of {email, type, ...})
+      - person.personal_emails[] (list of strings — only populated if
+        reveal_personal_emails=true)
+      - person.organization_email_format (gives a synthesizable pattern,
+        not used here; kept as a fallback only)
+
+    Returns the first real, non-masked email found, prioritizing work.
+    """
     if not person:
         return ""
+
     direct = (person.get("email") or "").strip()
-    if direct:
+    if _is_real_email(direct):
         return direct
+
     for ce in person.get("contact_emails") or []:
         if isinstance(ce, dict):
             e = (ce.get("email") or "").strip()
-            if e:
+            if _is_real_email(e):
                 return e
+
+    for pe in person.get("personal_emails") or []:
+        if isinstance(pe, str) and _is_real_email(pe):
+            return pe
+        if isinstance(pe, dict):
+            e = (pe.get("email") or "").strip()
+            if _is_real_email(e):
+                return e
+
     return ""
 
 
@@ -149,40 +291,199 @@ def normalize_linkedin_url(raw: str) -> str | None:
     return "https://" + s.lstrip("/")
 
 
+DEBUG_ENRICH = False  # set via --debug CLI flag
+
 def enrich_person(
     api_key: str,
     domain: str,
     first_name: str,
     last_name: str,
     linkedin_url: str | None = None,
+    reveal_personal: bool = True,
 ) -> dict | None:
     """Enrich a person by name + domain. Costs 1 credit.
-    Pass linkedin_url when known — improves match rate per Apollo docs."""
-    payload: dict = {
+
+    Apollo's /people/match endpoint silently IGNORES the
+    `organization_domain` filter when matching by name — it returns the
+    closest global name match instead, with org data stripped out. This
+    is why every previous enrichment came back as "(not found)".
+
+    The fix: resolve the domain to an Apollo organization_id first via
+    /organizations/enrich (free), then pass that id to /people/match. If
+    the name doesn't appear in Apollo at that org, fall back to a
+    title-search and use the closest match's id (also handled by
+    find_people()).
+    """
+    # Strong path 1: caller already knows the LinkedIn URL.
+    if linkedin_url:
+        payload = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "linkedin_url": linkedin_url,
+            "reveal_personal_emails": bool(reveal_personal),
+            "reveal_phone_number": False,
+        }
+        return _post_match(api_key, payload)
+
+    # Strong path 2: resolve org_id, then match by name within that org.
+    org = resolve_organization(api_key, domain)
+    if org and org.get("id"):
+        payload = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "organization_id": org["id"],
+            "reveal_personal_emails": bool(reveal_personal),
+            "reveal_phone_number": False,
+        }
+        result = _post_match(api_key, payload)
+        # If by-name match against the org returned a stub (no title),
+        # search the org for any close-name candidates and enrich by id.
+        if result and not result.get("title"):
+            candidate = _find_candidate_by_name(api_key, org["id"], first_name, last_name)
+            if candidate and candidate.get("id"):
+                by_id = enrich_person_by_id(api_key, candidate["id"], reveal_personal)
+                if by_id:
+                    return by_id
+        if result:
+            return result
+
+    # Last-ditch fallback: original name+domain call (often returns stubs).
+    payload = {
         "first_name": first_name,
         "last_name": last_name,
         "organization_domain": domain,
-        "reveal_personal_emails": False,
+        "reveal_personal_emails": bool(reveal_personal),
         "reveal_phone_number": False,
     }
-    if linkedin_url:
-        payload["linkedin_url"] = linkedin_url
+    return _post_match(api_key, payload)
+
+
+def _post_match(api_key: str, payload: dict) -> dict | None:
     resp = requests.post(APOLLO_ENRICH_URL, headers=headers(api_key), json=payload, timeout=30)
+    if DEBUG_ENRICH:
+        print(f"\n--- DEBUG: /people/match status={resp.status_code} payload={json.dumps({k:v for k,v in payload.items() if k!='reveal_personal_emails'})} ---")
+        for h in ("x-rate-limit-minute", "x-rate-limit-hourly", "x-rate-limit-daily",
+                  "x-24-hour-usage", "x-minute-usage", "x-hourly-usage"):
+            if h in resp.headers:
+                print(f"  {h}: {resp.headers[h]}")
+        try:
+            print(json.dumps(resp.json(), indent=2)[:3000])
+        except Exception:
+            print(resp.text[:1500])
+        print("--- /DEBUG ---\n")
     resp.raise_for_status()
-    data = resp.json()
-    person = data.get("person")
+    person = (resp.json() or {}).get("person") or None
     if not person:
         return None
-    email = extract_work_email_from_person(person)
     return {
         "name": person.get("name", ""),
         "first_name": person.get("first_name", ""),
         "last_name": person.get("last_name", ""),
         "title": person.get("title", ""),
-        "email": email,
+        "email": extract_work_email_from_person(person),
+        "email_status": person.get("email_status", ""),
         "linkedin": person.get("linkedin_url", ""),
-        "company": person.get("organization", {}).get("name", ""),
+        "company": (person.get("organization") or {}).get("name", ""),
     }
+
+
+def _find_candidate_by_name(api_key: str, org_id: str, first_name: str, last_name: str) -> dict | None:
+    """Search the org's people for the best candidate matching the given name.
+
+    Apollo obfuscates last names in search ("Ra***i"), so we match on
+    first_name exact + last_name first-letter when available.
+    """
+    payload = {"organization_ids": [org_id], "page": 1, "per_page": 25, "q_keywords": first_name}
+    try:
+        resp = requests.post(APOLLO_SEARCH_URL, headers=headers(api_key), json=payload, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return None
+    candidates = (resp.json() or {}).get("people") or []
+    last_initial = (last_name or "")[:1].lower()
+    best = None
+    for p in candidates:
+        if (p.get("first_name") or "").strip().lower() != first_name.strip().lower():
+            continue
+        obf = (p.get("last_name_obfuscated") or "").lower()
+        if last_initial and obf.startswith(last_initial):
+            return p  # strong match
+        best = best or p  # weak fallback
+    return best
+
+
+def enrich_person_by_id(api_key: str, person_id: str, reveal_personal: bool = True) -> dict | None:
+    """Enrich an Apollo person record by its internal id. Costs 1 credit.
+
+    This is the highest-confidence enrichment path — Apollo will return the
+    full record (real last name, verified email, title, LinkedIn) for the
+    exact person you found via search.
+    """
+    payload = {
+        "id": person_id,
+        "reveal_personal_emails": bool(reveal_personal),
+        "reveal_phone_number": False,
+    }
+    resp = requests.post(APOLLO_ENRICH_URL, headers=headers(api_key), json=payload, timeout=30)
+    if DEBUG_ENRICH:
+        print(f"\n--- DEBUG: /people/match by id={person_id} status={resp.status_code} ---")
+        try:
+            print(json.dumps(resp.json(), indent=2)[:3000])
+        except Exception:
+            print(resp.text[:1000])
+        print("--- /DEBUG ---\n")
+    resp.raise_for_status()
+    person = (resp.json() or {}).get("person") or None
+    if not person:
+        return None
+    return {
+        "name": person.get("name", ""),
+        "first_name": person.get("first_name", ""),
+        "last_name": person.get("last_name", ""),
+        "title": person.get("title", ""),
+        "email": extract_work_email_from_person(person),
+        "email_status": person.get("email_status", ""),
+        "linkedin": person.get("linkedin_url", ""),
+        "company": (person.get("organization") or {}).get("name", ""),
+    }
+
+
+def find_people(
+    api_key: str,
+    domain: str,
+    titles: list[str] | None = None,
+    seniority: list[str] | None = None,
+    limit: int = 10,
+    enrich: bool = True,
+) -> list[dict]:
+    """Search by domain+title, then optionally enrich top matches.
+
+    This is the function callers should use — it implements the only
+    Apollo flow that actually returns verified work emails:
+        domain  ->  /organizations/enrich  ->  org_id
+        org_id  ->  /mixed_people/api_search  ->  person_ids
+        person_id  ->  /people/match  ->  email
+
+    enrich=False returns search-only previews (0 credits).
+    enrich=True spends 1 credit per result returned (up to `limit`).
+    """
+    matches = search_people(api_key, domain, titles=titles, seniority=seniority, limit=limit)
+    if not enrich:
+        return matches
+    enriched: list[dict] = []
+    for m in matches:
+        pid = m.get("id")
+        if not pid:
+            continue
+        try:
+            r = enrich_person_by_id(api_key, pid)
+            if r:
+                r["search_title"] = m.get("title", "")
+                enriched.append(r)
+            time.sleep(0.4)
+        except requests.RequestException as exc:
+            print(f"  ! enrich {pid} failed: {exc}", file=sys.stderr)
+    return enriched
 
 
 def print_enrich_result(result: dict | None, name: str, domain: str):
@@ -190,11 +491,14 @@ def print_enrich_result(result: dict | None, name: str, domain: str):
         print(f"No match found for: {name} @ {domain}")
         return
     print(f"\n{'='*70}")
-    print(f"  Enrichment: {result['name']}  (1 credit used)")
+    print(f"  Enrichment: {result['name']}  (credits used)")
     print(f"{'='*70}\n")
     print(f"  Name:     {result['name']}")
-    print(f"  Title:    {result['title']}")
-    print(f"  Email:    {result['email'] or '(not found)'}")
+    print(f"  Title:    {result['title'] or '(none)'}")
+    email_line = result['email'] or '(not found)'
+    if result.get('email_status'):
+        email_line = f"{email_line}  [{result['email_status']}]"
+    print(f"  Email:    {email_line}")
     print(f"  LinkedIn: {result['linkedin'] or '(not found)'}")
     print(f"  Company:  {result['company']}")
     print()
@@ -484,6 +788,28 @@ def main():
     sp_enrich = sub.add_parser("enrich", help="Enrich a person by name + domain (1 credit)")
     sp_enrich.add_argument("--domain", required=True, help="Company domain")
     sp_enrich.add_argument("--name", required=True, help='Full name (e.g. "Nathan Smolenski")')
+    sp_enrich.add_argument("--linkedin", default=None, help="LinkedIn URL (improves match rate)")
+    sp_enrich.add_argument(
+        "--no-reveal", action="store_true",
+        help="Do NOT pass reveal_personal_emails=true (cheaper, but Apollo will return name only).",
+    )
+    sp_enrich.add_argument("--debug", action="store_true", help="Print raw Apollo response for diagnosis")
+
+    # find — the recommended high-quality flow
+    sp_find = sub.add_parser(
+        "find",
+        help="Find + enrich the right people at a company by title (resolves org_id first)",
+    )
+    sp_find.add_argument("--domain", required=True, help="Company domain (e.g. playtika.com)")
+    sp_find.add_argument(
+        "--titles",
+        default="CISO,Chief Information Security Officer,VP Security,Head of Security,Head of Trust and Safety,VP Trust and Safety,Chief Safety Officer",
+        help="Comma-separated job titles to search for",
+    )
+    sp_find.add_argument("--seniority", default=None, help="Comma-separated Apollo seniorities (vp,c_suite,director,head)")
+    sp_find.add_argument("--limit", type=int, default=5, help="Max people to enrich (each costs 1 credit)")
+    sp_find.add_argument("--no-enrich", action="store_true", help="Search only; do not spend credits to reveal emails")
+    sp_find.add_argument("--debug", action="store_true", help="Print raw Apollo responses")
 
     # batch
     sp_batch = sub.add_parser("batch", help="Batch enrich contacts from target-accounts.md")
@@ -525,8 +851,48 @@ def main():
             print("Error: Provide a full name (first + last)", file=sys.stderr)
             sys.exit(1)
         first, last = parts[0], " ".join(parts[1:])
-        result = enrich_person(api_key, args.domain, first, last)
+        global DEBUG_ENRICH
+        DEBUG_ENRICH = bool(getattr(args, "debug", False))
+        result = enrich_person(
+            api_key,
+            args.domain,
+            first,
+            last,
+            linkedin_url=getattr(args, "linkedin", None),
+            reveal_personal=not getattr(args, "no_reveal", False),
+        )
         print_enrich_result(result, args.name, args.domain)
+
+    elif args.command == "find":
+        DEBUG_ENRICH = bool(getattr(args, "debug", False))
+        titles = [t.strip() for t in args.titles.split(",") if t.strip()]
+        seniority = [s.strip() for s in args.seniority.split(",")] if args.seniority else None
+        results = find_people(
+            api_key,
+            args.domain,
+            titles=titles,
+            seniority=seniority,
+            limit=args.limit,
+            enrich=not args.no_enrich,
+        )
+        if not results:
+            org = resolve_organization(api_key, args.domain)
+            if not org:
+                print(f"Apollo has no organization record for {args.domain}.")
+            else:
+                print(f"No matches in Apollo for {org.get('name')} ({args.domain}) with titles: {titles}")
+            return
+        print(f"\n{'='*70}")
+        print(f"  Find: {args.domain} — {len(results)} record(s)")
+        print(f"{'='*70}\n")
+        for r in results:
+            email = r.get("email") or "(not found)"
+            status = f" [{r['email_status']}]" if r.get("email_status") else ""
+            print(f"  - {r.get('name','(unknown)')}")
+            print(f"      Title:    {r.get('title') or r.get('search_title','(none)')}")
+            print(f"      Email:    {email}{status}")
+            print(f"      LinkedIn: {r.get('linkedin') or '(none)'}")
+            print()
 
     elif args.command == "batch":
         run_batch(api_key, args.file, update=args.update)

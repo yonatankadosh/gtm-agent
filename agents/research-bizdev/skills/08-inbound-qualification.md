@@ -29,9 +29,9 @@ Qualify an unknown account — inbound lead, referral, event contact, or any com
 
 ## Output
 
-Write to `output/research/{icp-folder}/{company-slug}.md`
+Write to `output/research/{icp-folder}/{slug}.md`
 
-The ICP folder is determined in Step 1. If no ICP fits, write to `output/research/{company-slug}.md` (root research folder).
+`{slug}` is the company's primary domain stem, lowercased and hyphenated (e.g. `mcafee.com` → `mcafee`, `deutsche-telekom.com` → `deutsche-telekom`). The ICP folder is determined in Step 1. If no ICP fits, write to `output/research/uncategorized/{slug}.md` (never to the research root — that violates the slug convention).
 
 If the score reaches Tier 1 or Tier 2 threshold, also update `output/target-accounts.md`.
 
@@ -75,7 +75,7 @@ Execute all nine Skill 04 steps in order:
 8. **Account Summary** — 150-250 word synthesis readable in 60 seconds
 9. **Next Actions** — best next step based on the research
 
-Follow the full Skill 04 methodology file (`skills/04-account-research.md`) for detailed instructions on each step. The output should be identical in depth and quality to any other account research file.
+Follow the full Skill 04 methodology file (`agents/research-bizdev/skills/04-account-research.md`) for detailed instructions on each step. The output should be identical in depth and quality to any other account research file.
 
 ### Step 3: Score
 
@@ -193,6 +193,16 @@ Uses the full Skill 04 output schema with three additions at the top (source, IC
 | Economic buyer | ... | ... | ... | ... |
 | Influencer | ... | ... | ... | ... |
 
+### Israel Approach Paths
+Mandatory subsection per Skill 04 Step 5c — never omit. List every Israel-based path that shortens access to this account. If none after honest search, write "No Israel-based approach path identified" and list what was searched.
+
+| Type | Person / Entity | Connection | How to use it |
+|---|---|---|---|
+| Target employee (Israel) | ... | ... | ... |
+| Investor / board (Israel) | ... | ... | ... |
+| Shared Israeli vendor | ... | ... | ... |
+| Cyvore network overlap | ... | ... | ... |
+
 ## Pain & Opportunity
 [Value proposition mapping paragraph]
 
@@ -256,6 +266,7 @@ Uses the full Skill 04 output schema with three additions at the top (source, IC
 - [ ] Next action is specific — names a person, a skill to run, or a signal to monitor
 - [ ] Research gaps are listed so the user knows what to verify manually
 - [ ] Apollo enrichment was attempted for named contacts per Skill 04 Step 5b, or documented if skipped
+- [ ] **Israel Approach Paths subsection is present** (per Skill 04 Step 5c) — concrete connections OR explicit "No Israel-based approach path identified" with what was searched. Never silently omitted.
 
 ---
 

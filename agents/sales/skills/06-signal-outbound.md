@@ -17,7 +17,7 @@ Turn a buying signal into a personalized, timed outreach sequence. This skill ha
 
 ## Output
 
-Write to `output/outreach/{company-slug}.md`
+Write to `output/outreach/{icp-folder}/{slug}.md` — same `{icp-folder}/{slug}` pair as the corresponding research file (slug convention defined in Skill 04). For tier-1 signals on net-new accounts where Skill 04 hasn't run yet, output goes to the right ICP folder once classified during Step 2.
 
 ---
 
