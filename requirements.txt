@@ -1,3 +1,6 @@
 python-telegram-bot>=21.0
 markdown>=3.5
 requests>=2.31
+gspread>=6.0
+google-auth>=2.0
+openpyxl>=3.1

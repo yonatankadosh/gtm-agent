@@ -64,7 +64,11 @@ The Orchestrator parses the user's request and routes to the matching agent. If 
 | "Draft outreach for X", "Write a sequence for X" | Sales | 03 (if no research file exists for X, Sales returns to the Orchestrator per the shared-research rule; the Orchestrator confirms with the user, then sequences Research & BizDev → Sales) |
 | "X just had [signal] — go", "Move on the [funding / breach / new CISO] signal at X" | Sales | 06 |
 | "Run pipeline review", "Where does the pipeline stand?", "Pipeline hygiene" | Sales | pipeline-maintenance |
-| "Log a note in HubSpot for X", "Update the deal stage" | Sales | (HubSpot write — confirm in chat) |
+| "Sync this week's tab to HubSpot", "Push xlsx Status + Next Step to HubSpot" | Sales | hubspot-status-sync (catch-up; xlsx → HubSpot batch) |
+| "update {account}: status X, next Y", "set X for {account}", "quick update {account}" | Sales | hubspot-quick-update (mid-week single-record write) |
+| "log note on {account}: ...", "note for {account}", "log call/email on {account}" | Sales | hubspot-quick-update (creates HubSpot Note) |
+| "move {account} to {stage}", "promote {account} to {stage}", "demote {account} to {stage}" | Sales | hubspot-quick-update (changes dealstage / hs_pipeline_stage) |
+| "kill {account} reason: X", "close lost {account}", "disqualify {account}" | Sales | hubspot-quick-update (Closed Lost / Disqualified + reason note) |
 | "Prep me for [any meeting]" — sales / partner / investor / all-hands / board | Chief of Staff | 07 |
 | "Weekly digest", "What happened this week" | Chief of Staff | exec-comms (audience=weekly) |
 | "Board update", "Quarterly board doc" | Chief of Staff | exec-comms (audience=board) |
@@ -100,8 +104,8 @@ What each agent guarantees to produce — so downstream agents and the Orchestra
 - **Returns to Orchestrator:** path to the file(s) written + summary + any HubSpot hygiene actions surfaced.
 
 ### Chief of Staff
-- **Reads:** common context + `state/weekly-context.md` + `state/okrs.md`; on demand: latest `output/pipeline/{YYYY-WW}.md`, `output/research/{icp}/{slug}.md` for the meeting target, prior `output/meeting-prep/`, prior `output/exec-comms/`, `output/outreach-learnings.md`.
-- **Writes:** `output/meeting-prep/{slug}-{date}.md`, `output/exec-comms/{audience}/{date}.md`, `state/weekly-context.md` (prepend, via the weekly-context skill).
+- **Reads:** common context + `state/weekly-context.md` + `state/okrs.md`; on demand: latest `output/pipeline/{YYYY-WW}.md`, `output/research/{icp}/{slug}.md` for the meeting target, prior `output/meeting-prep/`, prior `output/exec-comms/`, `output/outreach-learnings.md`. **For `audience=weekly`:** also reads the Cyvore GTM Weekly Sync Google Sheet via `python3 tools/read-weekly-sync.py` (replaces the deprecated `state/weekly-customer-sync.xlsx` — archived during the 2026-W22 migration).
+- **Writes:** `output/meeting-prep/{slug}-{date}.md`, `output/exec-comms/{audience}/{date}.md`, `output/exec-comms/weekly-tasks/{YYYY-WW}/{owner}.md` (audience=weekly side artifact), `state/weekly-context.md` (prepend, via the weekly-context skill).
 - **Skills inherited:** 07 + exec-comms (audience-aware composition) + weekly-context (5-question interview).
 - **Reads HubSpot:** never. Pipeline state comes from Sales' snapshot.
 - **Returns to Orchestrator:** path to the file written + a short preview/draft for user confirmation if comms (always confirm before writing).
@@ -125,15 +129,16 @@ What each agent guarantees to produce — so downstream agents and the Orchestra
 
 ### `run weekly`
 
-When the user says **"run weekly"** (or equivalent), execute three steps back-to-back. Confirm before starting:
+When the user says **"run weekly"** (or equivalent), execute four steps back-to-back. Confirm before starting:
 
-1. **Greet:** "Running the weekly cadence — three steps: weekly-context interview, pipeline review, weekly digest. ~5 minutes total. Go?"
+0. **Pre-flight (sync sheet check):** confirm the Cyvore GTM Weekly Sync Google Sheet contains a tab whose date falls in the current ISO week. Run `python3 tools/read-weekly-sync.py --list` to inspect. If the current week's tab is missing (the Mon 06:00 cron didn't fire, or it's an off-cycle digest), run `python3 tools/generate-weekly-tab.py` to create it from current HubSpot state. If that also fails, surface the error to the user with the path to `tools/google-sheets-config.json` for inspection. Never invent the sheet.
+1. **Greet:** "Running the weekly cadence — three steps: weekly-context interview, pipeline review, weekly digest + per-assignee task files. ~5 minutes total. Go?"
 2. **Step 1 — Weekly Context:** dispatch Chief of Staff's weekly-context skill (5-question interview, writes `state/weekly-context.md`).
-3. **Step 2 — Pipeline Review:** dispatch Sales' pipeline-maintenance skill (HubSpot pull + reconciliation, writes `output/pipeline/{YYYY-WW}.md`).
-4. **Step 3 — Weekly Digest:** dispatch Chief of Staff's exec-comms skill with `audience=weekly`, reading the snapshot from Step 2 and the context from Step 1, writes `output/exec-comms/weekly/{YYYY-WW}.md`.
-5. **Summary:** show the user the three artifacts created. Ask if they want to email the digest using `tools/send-email.py`.
+3. **Step 2 — Pipeline Review:** dispatch Sales' pipeline-maintenance skill (HubSpot pull + reconciliation, writes `output/pipeline/{YYYY-WW}.md`). Stages must use Yonatan's labels (`New / Attempting / Connected / In meetings/conversations / Finalizing the POC / Running POC / Closed Won / CS`) — the same taxonomy as the sync sheet.
+4. **Step 3 — Weekly Digest + Task Files:** dispatch Chief of Staff's exec-comms skill with `audience=weekly`. Reads the snapshot from Step 2, the context from Step 1, and the latest tab of the sync sheet. Writes `output/exec-comms/weekly/{YYYY-WW}.md` AND per-assignee files at `output/exec-comms/weekly-tasks/{YYYY-WW}/{owner}.md`.
+5. **Summary:** show the user the artifacts created (digest + N owner task files). Ask if they want to email the digest and/or each owner's task file using `tools/send-email.py`.
 
-If any step fails (e.g., HubSpot MCP not connected, user aborts the interview), surface the failure and stop. Never continue with stale or missing data.
+If any step fails (e.g., HubSpot MCP not connected, user aborts the interview, sync sheet's current-week tab missing), surface the failure and stop. Never continue with stale or missing data.
 
 ### `run board prep`
 
@@ -164,6 +169,7 @@ If any step fails (e.g., HubSpot MCP not connected, user aborts the interview), 
 
 - **HubSpot MCP not connected** (when the requested skill needs it): stop. Tell the user to wire the HubSpot MCP server in Cursor settings before retrying. Do NOT fabricate pipeline data.
 - **Empty HubSpot:** run anyway. The pipeline snapshot will say "0 open deals" with a clear "this is real, not an error" note. The reconciliation findings (research without deals, outreach without deals) become the main content.
+- **Missing current-week tab in the Cyvore GTM Weekly Sync Sheet** (audience=weekly): try `python3 tools/generate-weekly-tab.py` first (creates the tab from live HubSpot). If that also fails (Sheets credentials not configured, or generator errored), stop and ask the user to inspect `tools/google-sheets-config.json` / add the tab manually. Do NOT generate the weekly digest from prior-week data silently.
 - **No `state/weekly-context.md` entry for this week:** skip the freshness check, run the weekly-context interview, then proceed.
 - **Stale weekly context (>7 days old):** surface to the user, recommend re-running the interview before generating any digest/board/investor artifact.
 - **Missing research file** when a downstream agent needs it: return to the Orchestrator. Ask the user whether to route to Research & BizDev first.

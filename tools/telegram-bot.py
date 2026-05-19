@@ -22,6 +22,17 @@ folder (`output/pipeline/` for /pipeline, `output/exec-comms/{audience}/` for
 the others). The artifacts themselves are produced inside Cursor by the
 relevant agent (Sales for pipeline, Chief of Staff for the rest).
 
+HubSpot write commands (mid-week, single-record, confirmation-gated):
+    /update <account> status: X next: Y -- write Status + Next Step
+    /note   <account> <free text>       -- log a HubSpot Note on the record
+    /stage  <account> <stage label>     -- move record to a new stage
+    /kill   <account> reason: <text>    -- Closed Lost / Disqualified + reason note
+    /state  <account>                   -- read-only: show HubSpot's current values
+    /yes (or /apply)                    -- apply the most recent pending write
+    /cancel                             -- abandon any pending write
+Each write command first replies with a "About to..." preview; you must send
+/yes within 60 seconds to apply. Anything else cancels.
+
     /help                               -- show available commands
 
 Start with:  python3 tools/telegram-bot.py
@@ -34,6 +45,11 @@ import logging
 import re
 import smtplib
 import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime
 from html import escape
 from difflib import SequenceMatcher
 from email.mime.application import MIMEApplication
@@ -55,10 +71,18 @@ logger = logging.getLogger(__name__)
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 CONFIG_PATH = SCRIPT_DIR / "email-config.json"
+HUBSPOT_CONFIG_PATH = SCRIPT_DIR / "hubspot-config.json"
+HUBSPOT_MAPPING_PATH = PROJECT_ROOT / "state" / "hubspot-mapping.json"
 RESEARCH_DIR = PROJECT_ROOT / "output" / "research"
 OUTREACH_DIR = PROJECT_ROOT / "output" / "outreach"
 PIPELINE_DIR = PROJECT_ROOT / "output" / "pipeline"
 EXEC_COMMS_DIR = PROJECT_ROOT / "output" / "exec-comms"
+
+HUBSPOT_API_BASE = "https://api.hubapi.com"
+LEADS_OBJECT_TYPE = "0-136"
+PENDING_TTL_SECONDS = 60
+
+PENDING_WRITES: dict[int, dict] = {}
 
 ICP_FOLDERS = {
     "icp-a": "icp-a-suite",
@@ -450,19 +474,837 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/board — latest quarterly board update\n"
         "/investor — latest monthly investor letter\n"
         "/allhands — latest all-hands script\n\n"
+        "<b>HubSpot writes</b> (60s confirmation, all need /yes after):\n"
+        "/update &lt;acct&gt; status: X next: Y — push Status + Next Step\n"
+        "/note &lt;acct&gt; &lt;text&gt; — log a HubSpot Note on the record\n"
+        "/stage &lt;acct&gt; &lt;stage&gt; — move to a new stage\n"
+        "/kill &lt;acct&gt; reason: &lt;text&gt; — Closed Lost / Disqualified + reason\n"
+        "/state &lt;acct&gt; — read-only: current HubSpot values\n"
+        "/yes (or /apply) — apply the most recent pending write\n"
+        "/cancel — discard pending write\n\n"
         "/help — show this message\n\n"
         "<b>Examples:</b>\n"
         "<code>/send cyera</code>\n"
-        "<code>/send bezeq to colleague@company.com</code>\n"
         "<code>/outreach bank hapoalim</code>\n"
-        "<code>/list icp-b</code>\n"
-        "<code>/pipeline</code>\n"
-        "<code>/digest to chair@board.com</code>\n\n"
+        "<code>/update cato status: install complete next: sign next week</code>\n"
+        "<code>/note att Sarah confirmed Q3 POC kickoff today</code>\n"
+        "<code>/kill mekorot reason: 53d untouched, no sponsor</code>\n"
+        "<code>/state cato</code>\n\n"
         "Cadence files are produced inside Cursor by the relevant agent "
         "(Sales for /pipeline, Chief of Staff for the rest). "
         "Run `run weekly` in Cursor first if a file is missing."
     )
     await update.message.reply_text(help_text, parse_mode="HTML")
+
+
+# ---------------------------------------------------------------------------
+# HubSpot write commands (mirror agents/sales/skills/hubspot-quick-update.md)
+# ---------------------------------------------------------------------------
+
+
+def hubspot_token() -> str | None:
+    if not HUBSPOT_CONFIG_PATH.exists():
+        return None
+    try:
+        cfg = json.loads(HUBSPOT_CONFIG_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    token = cfg.get("private_app_token")
+    return token if isinstance(token, str) and token else None
+
+
+def load_mapping() -> dict | None:
+    if not HUBSPOT_MAPPING_PATH.exists():
+        return None
+    try:
+        return json.loads(HUBSPOT_MAPPING_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def hubspot_request(method: str, path: str, token: str, *, body=None, query=None):
+    """Synchronous HubSpot REST call. Returns (status, parsed_json_or_text)."""
+    url = HUBSPOT_API_BASE + path
+    if query:
+        url += "?" + urllib.parse.urlencode(query, doseq=True)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+    }
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read()
+            if not raw:
+                return resp.status, None
+            return resp.status, json.loads(raw.decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            err_body = ""
+        return e.code, err_body
+    except urllib.error.URLError as e:
+        return 0, str(e)
+
+
+def resolve_account(query: str, mapping: dict) -> tuple[str | None, dict | None, list[str]]:
+    """Resolve user's free-text account query against state/hubspot-mapping.json.
+    Returns (matched_key, entry, candidates_for_disambiguation).
+    candidates is non-empty only when match is ambiguous."""
+    keys = [k for k in mapping.keys() if not k.startswith("_")]
+    q = query.strip()
+    q_lower = q.lower()
+
+    if q in mapping:
+        return q, mapping[q], []
+
+    for k in keys:
+        if k.lower() == q_lower:
+            return k, mapping[k], []
+
+    substring = [k for k in keys if q_lower in k.lower() or k.lower() in q_lower]
+    if len(substring) == 1:
+        k = substring[0]
+        return k, mapping[k], []
+    if len(substring) > 1:
+        return None, None, substring[:5]
+
+    scored = []
+    for k in keys:
+        ratio = SequenceMatcher(None, q_lower, k.lower()).ratio()
+        if ratio >= 0.55:
+            scored.append((ratio, k))
+    scored.sort(reverse=True)
+    if not scored:
+        return None, None, []
+    if len(scored) == 1 or scored[0][0] - scored[1][0] > 0.15:
+        k = scored[0][1]
+        return k, mapping[k], []
+    return None, None, [k for _, k in scored[:5]]
+
+
+def parse_update_args(text: str) -> dict:
+    """Parse '/update <account> status: X next: Y' into {account, status, next_step}.
+    Order doesn't matter; missing fields are None. Both keywords are optional but
+    at least one must be present."""
+    out = {"account": None, "status": None, "next_step": None}
+    text = text.strip()
+    pattern = re.compile(
+        r"\b(status|next(?:\s*step)?)\s*[:=]\s*(.+?)(?=\s+\b(?:status|next(?:\s*step)?)\s*[:=]|$)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    matches = list(pattern.finditer(text))
+    if not matches:
+        out["account"] = text
+        return out
+    out["account"] = text[: matches[0].start()].strip().rstrip(":,")
+    for m in matches:
+        kind = m.group(1).lower().replace(" ", "")
+        value = m.group(2).strip().rstrip(",")
+        if kind == "status":
+            out["status"] = value
+        else:
+            out["next_step"] = value
+    return out
+
+
+def parse_kill_args(text: str) -> tuple[str, str | None]:
+    """Parse '/kill <account> reason: ...' -> (account, reason)."""
+    m = re.search(r"\breason\s*[:=]\s*(.+)$", text, re.IGNORECASE | re.DOTALL)
+    if m:
+        return text[: m.start()].strip().rstrip(":,"), m.group(1).strip()
+    return text.strip(), None
+
+
+def parse_stage_args(text: str) -> tuple[str, str | None]:
+    """Parse '/stage <account> <stage>' -> (account, stage_label).
+    Stage label is everything after the last 'to' keyword if present,
+    otherwise the last whitespace-separated token. Falls back to splitting
+    on the last colon."""
+    m = re.search(r"\bto\s+(.+)$", text, re.IGNORECASE | re.DOTALL)
+    if m:
+        return text[: m.start()].strip().rstrip(":,"), m.group(1).strip()
+    parts = text.rsplit(":", 1)
+    if len(parts) == 2 and parts[1].strip():
+        return parts[0].strip(), parts[1].strip()
+    return text.strip(), None
+
+
+def fetch_record_summary(entry: dict, token: str) -> list[dict]:
+    """Fetch current Status + Next Step + stage for every deal/lead linked to
+    the mapping entry. Returns list of {type, id, label, status, next_step,
+    stage, url}. Empty list if no records or HubSpot read fails."""
+    out = []
+    for d in entry.get("deals") or []:
+        rid = str(d["id"])
+        status, payload = hubspot_request(
+            "GET",
+            f"/crm/v3/objects/deals/{rid}",
+            token,
+            query={
+                "properties": "dealname,dealstage,hs_next_step,cyvore_weekly_status"
+            },
+        )
+        if status == 200 and isinstance(payload, dict):
+            props = payload.get("properties") or {}
+            out.append(
+                {
+                    "type": "deal",
+                    "id": rid,
+                    "label": d.get("label") or props.get("dealname") or "",
+                    "status_value": props.get("cyvore_weekly_status") or "",
+                    "next_step": props.get("hs_next_step") or "",
+                    "stage": props.get("dealstage") or "",
+                    "url": f"https://app.hubspot.com/contacts/_/record/0-3/{rid}",
+                }
+            )
+    for ld in entry.get("leads") or []:
+        rid = str(ld["id"])
+        status, payload = hubspot_request(
+            "GET",
+            f"/crm/v3/objects/{LEADS_OBJECT_TYPE}/{rid}",
+            token,
+            query={
+                "properties": "hs_lead_name,hs_pipeline_stage,cyvore_next_step,cyvore_weekly_status"
+            },
+        )
+        if status == 200 and isinstance(payload, dict):
+            props = payload.get("properties") or {}
+            out.append(
+                {
+                    "type": "lead",
+                    "id": rid,
+                    "label": ld.get("label") or props.get("hs_lead_name") or "",
+                    "status_value": props.get("cyvore_weekly_status") or "",
+                    "next_step": props.get("cyvore_next_step") or "",
+                    "stage": props.get("hs_pipeline_stage") or "",
+                    "url": f"https://app.hubspot.com/contacts/_/record/{LEADS_OBJECT_TYPE}/{rid}",
+                }
+            )
+    return out
+
+
+def stash_pending(chat_id: int, action: dict) -> None:
+    PENDING_WRITES[chat_id] = {**action, "expires_at": time.time() + PENDING_TTL_SECONDS}
+
+
+def pop_pending(chat_id: int) -> dict | None:
+    pending = PENDING_WRITES.pop(chat_id, None)
+    if pending is None:
+        return None
+    if pending.get("expires_at", 0) < time.time():
+        return None
+    return pending
+
+
+def append_quick_update_log(entry_line: str) -> None:
+    """Append a one-line audit entry to output/pipeline/{YYYY-WW}-sync-log.md.
+    Creates the file with a minimal header if missing. Mirrors the format
+    used by agents/sales/skills/hubspot-quick-update.md."""
+    week = datetime.now().strftime("%G-%V")
+    log_path = PROJECT_ROOT / "output" / "pipeline" / f"{week}-sync-log.md"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    if not log_path.exists():
+        log_path.write_text(
+            f"# HubSpot Sync Log — Week {week}\n\n"
+            "**Type:** Quick-updates (mid-week single-record edits via Telegram bot or hubspot-quick-update skill).\n\n"
+            "## Quick-update entries\n\n",
+            encoding="utf-8",
+        )
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(entry_line.rstrip() + "\n")
+
+
+async def _setup_check(update: Update) -> tuple[str, dict] | None:
+    """Common gate for HubSpot commands: token + mapping must be present."""
+    if not await check_access(update):
+        return None
+    token = hubspot_token()
+    if not token:
+        await update.message.reply_text(
+            "HubSpot Private App token not configured. Add tools/hubspot-config.json on the bot host."
+        )
+        return None
+    mapping = load_mapping()
+    if mapping is None:
+        await update.message.reply_text(
+            "state/hubspot-mapping.json not found on the bot host. Cannot resolve account."
+        )
+        return None
+    return token, mapping
+
+
+async def cmd_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Read-only: show HubSpot's current Status / Next Step / stage for an account."""
+    setup = await _setup_check(update)
+    if setup is None:
+        return
+    token, mapping = setup
+    args_text = " ".join(context.args).strip() if context.args else ""
+    if not args_text:
+        await update.message.reply_text("Usage: /state <account>")
+        return
+
+    key, entry, candidates = resolve_account(args_text, mapping)
+    if not entry:
+        if candidates:
+            opts = "\n".join(f"  /state {c}" for c in candidates)
+            await update.message.reply_text(f"Multiple matches for '{args_text}':\n{opts}")
+        else:
+            await update.message.reply_text(
+                f"'{args_text}' not in state/hubspot-mapping.json."
+            )
+        return
+
+    records = fetch_record_summary(entry, token)
+    if not records:
+        await update.message.reply_text(
+            f"<b>{escape(key)}</b> — mapped but no HubSpot records returned (read error or empty).",
+            parse_mode="HTML",
+        )
+        return
+
+    parts = [f"<b>{escape(key)}</b> ({len(records)} record(s)):"]
+    for r in records:
+        parts.append(
+            f"\n• {escape(r['type'])} {escape(str(r['label']))} (id {r['id']})\n"
+            f"  status: {escape(r['status_value']) or '<i>(empty)</i>'}\n"
+            f"  next:   {escape(r['next_step']) or '<i>(empty)</i>'}\n"
+            f"  stage:  <code>{escape(r['stage'])}</code>\n"
+            f"  <a href=\"{r['url']}\">open in HubSpot</a>"
+        )
+    await update.message.reply_text("\n".join(parts), parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Propose Status / Next Step write. /yes within 60s applies it."""
+    setup = await _setup_check(update)
+    if setup is None:
+        return
+    token, mapping = setup
+    args_text = " ".join(context.args).strip() if context.args else ""
+    if not args_text:
+        await update.message.reply_text(
+            "Usage: /update <account> status: X next: Y\n"
+            "(at least one of status / next is required)"
+        )
+        return
+
+    parsed = parse_update_args(args_text)
+    if not parsed["account"]:
+        await update.message.reply_text("Couldn't parse account name from your message.")
+        return
+    if parsed["status"] is None and parsed["next_step"] is None:
+        await update.message.reply_text("Need at least one of `status:` or `next:`.")
+        return
+
+    key, entry, candidates = resolve_account(parsed["account"], mapping)
+    if not entry:
+        if candidates:
+            opts = "\n".join(f"  /update {c} status: ... next: ..." for c in candidates)
+            await update.message.reply_text(f"Multiple matches for '{parsed['account']}':\n{opts}")
+        else:
+            await update.message.reply_text(
+                f"'{parsed['account']}' not in state/hubspot-mapping.json."
+            )
+        return
+
+    targets = []
+    for d in entry.get("deals") or []:
+        targets.append({"type": "deal", "id": str(d["id"]), "label": d.get("label", "")})
+    for ld in entry.get("leads") or []:
+        targets.append({"type": "lead", "id": str(ld["id"]), "label": ld.get("label", "")})
+    if not targets:
+        await update.message.reply_text(f"'{key}' has no linked deals or leads in the mapping.")
+        return
+
+    stash_pending(
+        update.effective_chat.id,
+        {
+            "kind": "update",
+            "account": key,
+            "targets": targets,
+            "status": parsed["status"],
+            "next_step": parsed["next_step"],
+        },
+    )
+
+    label_lines = "\n".join(
+        f"  • {t['type']} {t['label']} (id {t['id']})" for t in targets
+    )
+    field_lines = []
+    if parsed["status"] is not None:
+        field_lines.append(f"  cyvore_weekly_status = {parsed['status']!r}")
+    if parsed["next_step"] is not None:
+        field_lines.append(
+            f"  {'hs_next_step' if any(t['type'] == 'deal' for t in targets) else 'cyvore_next_step'} = {parsed['next_step']!r}"
+        )
+    msg = (
+        f"<b>About to update {escape(key)}</b> ({len(targets)} record(s)):\n"
+        f"<pre>{escape(label_lines)}</pre>\n"
+        f"<pre>{escape(chr(10).join(field_lines))}</pre>\n"
+        f"Reply /yes within {PENDING_TTL_SECONDS}s to apply, /cancel to drop."
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
+
+
+async def cmd_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Propose a HubSpot Note write. /yes within 60s applies it."""
+    setup = await _setup_check(update)
+    if setup is None:
+        return
+    token, mapping = setup
+    args_text = " ".join(context.args).strip() if context.args else ""
+    if not args_text:
+        await update.message.reply_text("Usage: /note <account> <free-text body>")
+        return
+
+    parts = args_text.split(None, 1)
+    if len(parts) < 2:
+        await update.message.reply_text("Note body is empty. Usage: /note <account> <body>")
+        return
+
+    account_query, body = parts[0], parts[1].strip()
+    longer_match = re.match(r"(.+?)\s+([:\-—].+)$", args_text)
+    if longer_match:
+        account_query = longer_match.group(1).strip()
+        body = longer_match.group(2).lstrip(":-— ").strip()
+
+    key, entry, candidates = resolve_account(account_query, mapping)
+    if not entry:
+        if len(parts) >= 2:
+            for sep_count in range(2, 5):
+                sub_parts = args_text.split(None, sep_count)
+                if len(sub_parts) > sep_count:
+                    candidate_acct = " ".join(sub_parts[:sep_count])
+                    candidate_body = sub_parts[sep_count]
+                    key2, entry2, _ = resolve_account(candidate_acct, mapping)
+                    if entry2:
+                        key, entry, account_query, body = (
+                            key2,
+                            entry2,
+                            candidate_acct,
+                            candidate_body,
+                        )
+                        candidates = []
+                        break
+    if not entry:
+        if candidates:
+            opts = "\n".join(f"  /note {c} <body>" for c in candidates)
+            await update.message.reply_text(f"Multiple matches for '{account_query}':\n{opts}")
+        else:
+            await update.message.reply_text(f"'{account_query}' not in state/hubspot-mapping.json.")
+        return
+
+    targets = []
+    for d in entry.get("deals") or []:
+        targets.append({"type": "deal", "id": str(d["id"]), "label": d.get("label", "")})
+    for ld in entry.get("leads") or []:
+        targets.append({"type": "lead", "id": str(ld["id"]), "label": ld.get("label", "")})
+    if not targets:
+        await update.message.reply_text(f"'{key}' has no linked deals or leads in the mapping.")
+        return
+
+    stash_pending(
+        update.effective_chat.id,
+        {"kind": "note", "account": key, "targets": targets, "body": body},
+    )
+
+    label_lines = "\n".join(
+        f"  • {t['type']} {t['label']} (id {t['id']})" for t in targets
+    )
+    msg = (
+        f"<b>About to log a HubSpot Note on {escape(key)}</b> "
+        f"({len(targets)} record(s)):\n"
+        f"<pre>{escape(label_lines)}</pre>\n"
+        f"<i>body:</i> {escape(body)}\n"
+        f"Reply /yes within {PENDING_TTL_SECONDS}s to apply, /cancel to drop."
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
+
+
+async def cmd_stage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Propose a stage change. /yes within 60s applies it."""
+    setup = await _setup_check(update)
+    if setup is None:
+        return
+    token, mapping = setup
+    args_text = " ".join(context.args).strip() if context.args else ""
+    if not args_text:
+        await update.message.reply_text(
+            "Usage: /stage <account> to <stage label> (or /stage <account>: <stage>)"
+        )
+        return
+    account_query, stage_label = parse_stage_args(args_text)
+    if not stage_label:
+        await update.message.reply_text(
+            "Couldn't parse the target stage. Try: /stage cato to Running POC"
+        )
+        return
+
+    key, entry, candidates = resolve_account(account_query, mapping)
+    if not entry:
+        if candidates:
+            opts = "\n".join(f"  /stage {c} to {stage_label}" for c in candidates)
+            await update.message.reply_text(f"Multiple matches for '{account_query}':\n{opts}")
+        else:
+            await update.message.reply_text(f"'{account_query}' not in state/hubspot-mapping.json.")
+        return
+
+    targets = []
+    for d in entry.get("deals") or []:
+        targets.append({"type": "deal", "id": str(d["id"]), "label": d.get("label", "")})
+    for ld in entry.get("leads") or []:
+        targets.append({"type": "lead", "id": str(ld["id"]), "label": ld.get("label", "")})
+    if not targets:
+        await update.message.reply_text(f"'{key}' has no linked deals or leads in the mapping.")
+        return
+
+    resolved = resolve_stage_label(stage_label, token, targets[0]["type"])
+    if resolved is None:
+        await update.message.reply_text(
+            f"Stage label '{stage_label}' didn't match any HubSpot stage. "
+            "Use /state &lt;account&gt; to see live stage values, "
+            "or use the canonical labels from agents/sales/skills/hubspot-quick-update.md.",
+            parse_mode="HTML",
+        )
+        return
+
+    stash_pending(
+        update.effective_chat.id,
+        {
+            "kind": "stage",
+            "account": key,
+            "targets": targets,
+            "stage_id": resolved["id"],
+            "stage_label": resolved["label"],
+        },
+    )
+
+    label_lines = "\n".join(
+        f"  • {t['type']} {t['label']} (id {t['id']})" for t in targets
+    )
+    msg = (
+        f"<b>About to move {escape(key)}</b> ({len(targets)} record(s)) "
+        f"to stage <code>{escape(resolved['label'])}</code> (id {resolved['id']}):\n"
+        f"<pre>{escape(label_lines)}</pre>\n"
+        f"Reply /yes within {PENDING_TTL_SECONDS}s to apply, /cancel to drop."
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
+
+
+async def cmd_kill(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Propose Closed Lost / Disqualified + reason note. /yes within 60s applies."""
+    setup = await _setup_check(update)
+    if setup is None:
+        return
+    token, mapping = setup
+    args_text = " ".join(context.args).strip() if context.args else ""
+    if not args_text:
+        await update.message.reply_text("Usage: /kill <account> reason: <text>")
+        return
+    account_query, reason = parse_kill_args(args_text)
+    if not reason:
+        await update.message.reply_text("Reason is mandatory. Usage: /kill <account> reason: <text>")
+        return
+
+    key, entry, candidates = resolve_account(account_query, mapping)
+    if not entry:
+        if candidates:
+            opts = "\n".join(f"  /kill {c} reason: {reason}" for c in candidates)
+            await update.message.reply_text(f"Multiple matches for '{account_query}':\n{opts}")
+        else:
+            await update.message.reply_text(f"'{account_query}' not in state/hubspot-mapping.json.")
+        return
+
+    targets = []
+    for d in entry.get("deals") or []:
+        targets.append({"type": "deal", "id": str(d["id"]), "label": d.get("label", "")})
+    for ld in entry.get("leads") or []:
+        targets.append({"type": "lead", "id": str(ld["id"]), "label": ld.get("label", "")})
+    if not targets:
+        await update.message.reply_text(f"'{key}' has no linked deals or leads in the mapping.")
+        return
+
+    closed_lost_label = "Closed Lost" if any(t["type"] == "deal" for t in targets) else "Disqualified"
+    resolved = resolve_stage_label(closed_lost_label, token, targets[0]["type"])
+    if resolved is None:
+        await update.message.reply_text(
+            f"Couldn't resolve '{closed_lost_label}' stage in HubSpot. Aborting."
+        )
+        return
+
+    stash_pending(
+        update.effective_chat.id,
+        {
+            "kind": "kill",
+            "account": key,
+            "targets": targets,
+            "stage_id": resolved["id"],
+            "stage_label": resolved["label"],
+            "reason": reason,
+        },
+    )
+
+    label_lines = "\n".join(
+        f"  • {t['type']} {t['label']} (id {t['id']})" for t in targets
+    )
+    msg = (
+        f"<b>About to kill {escape(key)}</b>:\n"
+        f"<pre>{escape(label_lines)}</pre>\n"
+        f"  1. Move to <code>{escape(resolved['label'])}</code> (id {resolved['id']})\n"
+        f"  2. Log Note: <i>Closed Lost — {escape(reason)}</i>\n"
+        f"Reply /yes within {PENDING_TTL_SECONDS}s to apply, /cancel to drop."
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
+
+
+def resolve_stage_label(label: str, token: str, object_type: str) -> dict | None:
+    """Look up a stage by label across HubSpot pipelines for the given object type.
+    object_type: 'deal' or 'lead'. Returns {id, label} or None."""
+    api_obj = "deals" if object_type == "deal" else LEADS_OBJECT_TYPE
+    status, payload = hubspot_request("GET", f"/crm/v3/pipelines/{api_obj}", token)
+    if status != 200 or not isinstance(payload, dict):
+        return None
+    label_lower = label.strip().lower()
+    aliases = {
+        "closed lost": ["closed lost", "closedlost", "lost", "killed", "dead"],
+        "closed won": ["closed won", "closedwon", "won", "signed"],
+        "disqualified": ["disqualified", "unqualified", "kill", "dead", "lost"],
+        "running poc": ["running poc"],
+        "finalizing the poc": ["finalizing the poc", "finalizing"],
+        "in meetings/conversations": ["in meetings/conversations", "meetings", "in meetings"],
+    }
+    expand = []
+    for canonical, alts in aliases.items():
+        if label_lower in alts:
+            expand.append(canonical)
+            break
+    candidates = [label_lower] + expand
+
+    for pipeline in payload.get("results", []):
+        for stage in pipeline.get("stages", []):
+            slug = (stage.get("label") or "").strip().lower()
+            if slug in candidates or label_lower == stage.get("id"):
+                return {"id": stage["id"], "label": stage.get("label") or stage["id"]}
+    return None
+
+
+async def _apply_update(token: str, action: dict) -> tuple[bool, str]:
+    """Apply a stashed 'update' action (Status + Next Step). Returns (ok, summary)."""
+    succeeded, failed = [], []
+    for t in action["targets"]:
+        if t["type"] == "deal":
+            props = {}
+            if action["status"] is not None:
+                props["cyvore_weekly_status"] = action["status"]
+            if action["next_step"] is not None:
+                props["hs_next_step"] = action["next_step"]
+            status_code, payload = hubspot_request(
+                "PATCH",
+                f"/crm/v3/objects/deals/{t['id']}",
+                token,
+                body={"properties": props},
+            )
+        else:
+            props = {}
+            if action["status"] is not None:
+                props["cyvore_weekly_status"] = action["status"]
+            if action["next_step"] is not None:
+                props["cyvore_next_step"] = action["next_step"]
+            status_code, payload = hubspot_request(
+                "PATCH",
+                f"/crm/v3/objects/{LEADS_OBJECT_TYPE}/{t['id']}",
+                token,
+                body={"properties": props},
+            )
+        if status_code in (200, 201):
+            succeeded.append(t)
+        else:
+            failed.append((t, status_code, payload))
+
+    log_lines = []
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M IDT")
+    for t in succeeded:
+        log_lines.append(
+            f"- {ts}: telegram /update on {action['account']} ({t['type']} {t['id']}): "
+            f"status={action['status']!r}, next={action['next_step']!r} — applied."
+        )
+    for t, code, payload in failed:
+        log_lines.append(
+            f"- {ts}: telegram /update on {action['account']} ({t['type']} {t['id']}): FAILED "
+            f"http={code} body={str(payload)[:200]!r}"
+        )
+    if log_lines:
+        for line in log_lines:
+            append_quick_update_log(line)
+
+    if not failed:
+        return True, f"Updated {len(succeeded)} record(s) on {action['account']}."
+    return False, (
+        f"Updated {len(succeeded)} record(s); failed {len(failed)}. "
+        f"First error: http={failed[0][1]} body={str(failed[0][2])[:200]}"
+    )
+
+
+async def _create_note(token: str, body: str, target_type: str, target_id: str) -> tuple[int, dict | str]:
+    """Create a HubSpot Note and associate to the target via v4 associations.
+    Note: Lead notes use object 0-136 association IDs; Deal notes use 0-3.
+    The create payload below uses inline associations (works for deals reliably;
+    for leads, requires the right associationTypeId — we fetch it on demand)."""
+    if target_type == "deal":
+        assoc_type_id = 214
+        to_object = "deals"
+    else:
+        assoc_type_id = 866
+        to_object = LEADS_OBJECT_TYPE
+
+    timestamp_ms = int(time.time() * 1000)
+    body_payload = {
+        "properties": {
+            "hs_note_body": body,
+            "hs_timestamp": str(timestamp_ms),
+        },
+        "associations": [
+            {
+                "to": {"id": str(target_id)},
+                "types": [
+                    {
+                        "associationCategory": "HUBSPOT_DEFINED",
+                        "associationTypeId": assoc_type_id,
+                    }
+                ],
+            }
+        ],
+    }
+    return hubspot_request("POST", "/crm/v3/objects/notes", token, body=body_payload)
+
+
+async def _apply_note(token: str, action: dict) -> tuple[bool, str]:
+    succeeded, failed = [], []
+    for t in action["targets"]:
+        status_code, payload = await _create_note(token, action["body"], t["type"], t["id"])
+        if status_code in (200, 201):
+            succeeded.append(t)
+        else:
+            failed.append((t, status_code, payload))
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M IDT")
+    for t in succeeded:
+        append_quick_update_log(
+            f"- {ts}: telegram /note on {action['account']} ({t['type']} {t['id']}): "
+            f"body={action['body'][:120]!r} — applied."
+        )
+    for t, code, payload in failed:
+        append_quick_update_log(
+            f"- {ts}: telegram /note on {action['account']} ({t['type']} {t['id']}): FAILED "
+            f"http={code} body={str(payload)[:200]!r}"
+        )
+
+    if not failed:
+        return True, f"Logged Note on {len(succeeded)} record(s) of {action['account']}."
+    return False, (
+        f"Logged on {len(succeeded)}; failed {len(failed)}. "
+        f"First error: http={failed[0][1]} body={str(failed[0][2])[:200]}"
+    )
+
+
+async def _apply_stage(token: str, action: dict) -> tuple[bool, str]:
+    succeeded, failed = [], []
+    for t in action["targets"]:
+        if t["type"] == "deal":
+            props = {"dealstage": action["stage_id"]}
+            url = f"/crm/v3/objects/deals/{t['id']}"
+        else:
+            props = {"hs_pipeline_stage": action["stage_id"]}
+            url = f"/crm/v3/objects/{LEADS_OBJECT_TYPE}/{t['id']}"
+        status_code, payload = hubspot_request(
+            "PATCH", url, token, body={"properties": props}
+        )
+        if status_code in (200, 201):
+            succeeded.append(t)
+        else:
+            failed.append((t, status_code, payload))
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M IDT")
+    for t in succeeded:
+        append_quick_update_log(
+            f"- {ts}: telegram /stage on {action['account']} ({t['type']} {t['id']}): "
+            f"-> {action['stage_label']!r} — applied."
+        )
+    for t, code, payload in failed:
+        append_quick_update_log(
+            f"- {ts}: telegram /stage on {action['account']} ({t['type']} {t['id']}): FAILED "
+            f"http={code} body={str(payload)[:200]!r}"
+        )
+
+    if not failed:
+        return True, f"Moved {len(succeeded)} record(s) of {action['account']} -> {action['stage_label']}."
+    return False, (
+        f"Moved {len(succeeded)}; failed {len(failed)}. "
+        f"First error: http={failed[0][1]} body={str(failed[0][2])[:200]}"
+    )
+
+
+async def _apply_kill(token: str, action: dict) -> tuple[bool, str]:
+    stage_ok, stage_msg = await _apply_stage(token, action)
+    note_action = {
+        "account": action["account"],
+        "targets": action["targets"],
+        "body": f"Closed Lost — {action['reason']}",
+    }
+    note_ok, note_msg = await _apply_note(token, note_action)
+    if stage_ok and note_ok:
+        return True, f"Killed {action['account']}: stage + note both applied."
+    return False, f"Stage: {stage_msg}; Note: {note_msg}"
+
+
+async def cmd_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Apply the most recent pending write for this chat."""
+    if not await check_access(update):
+        return
+    token = hubspot_token()
+    if not token:
+        await update.message.reply_text("HubSpot token not configured on bot host.")
+        return
+    chat_id = update.effective_chat.id
+    pending = pop_pending(chat_id)
+    if not pending:
+        await update.message.reply_text(
+            "Nothing to apply (or your previous proposal expired). Send a fresh /update, /note, /stage or /kill."
+        )
+        return
+
+    kind = pending["kind"]
+    if kind == "update":
+        ok, msg = await _apply_update(token, pending)
+    elif kind == "note":
+        ok, msg = await _apply_note(token, pending)
+    elif kind == "stage":
+        ok, msg = await _apply_stage(token, pending)
+    elif kind == "kill":
+        ok, msg = await _apply_kill(token, pending)
+    else:
+        await update.message.reply_text(f"Unknown pending action kind: {kind!r}")
+        return
+
+    prefix = "✅" if ok else "⚠️"
+    await update.message.reply_text(f"{prefix} {msg}")
+
+
+async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Discard any pending HubSpot write for this chat."""
+    if not await check_access(update):
+        return
+    if PENDING_WRITES.pop(update.effective_chat.id, None):
+        await update.message.reply_text("Pending HubSpot write discarded.")
+    else:
+        await update.message.reply_text("No pending HubSpot write to cancel.")
 
 
 async def post_init(application: Application) -> None:
@@ -509,6 +1351,14 @@ def main():
     app.add_handler(CommandHandler("board", cmd_board))
     app.add_handler(CommandHandler("investor", cmd_investor))
     app.add_handler(CommandHandler("allhands", cmd_allhands))
+    app.add_handler(CommandHandler("update", cmd_update))
+    app.add_handler(CommandHandler("note", cmd_note))
+    app.add_handler(CommandHandler("stage", cmd_stage))
+    app.add_handler(CommandHandler("kill", cmd_kill))
+    app.add_handler(CommandHandler("state", cmd_state))
+    app.add_handler(CommandHandler("yes", cmd_yes))
+    app.add_handler(CommandHandler("apply", cmd_yes))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))
 
     logger.info("Bot starting... Press Ctrl+C to stop.")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)

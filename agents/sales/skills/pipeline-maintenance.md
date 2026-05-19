@@ -42,6 +42,14 @@ Use the HubSpot MCP server to fetch:
 
 If HubSpot is empty or sparse, that is a finding to surface in the report — do NOT invent deals.
 
+**Canonical pipeline stages.** The HubSpot pipeline uses Yonatan's labels — the same labels he uses in the Cyvore GTM Weekly Sync Google Sheet (the live Monday meeting surface). Always use these strings verbatim when reporting; do not translate to HubSpot defaults like `appointmentscheduled` or `qualifiedtobuy`:
+
+```
+New → Attempting → Connected → In meetings/conversations → Finalizing the POC → Running POC → Closed Won → CS
+```
+
+(`CS` covers post-close customer success / live-customer state.) This taxonomy is shared with Chief of Staff's exec-comms skill — the weekly digest's stage breakdown lines up 1:1 with this snapshot.
+
 ### Step 2: Reconcile against `output/`
 
 For each open HubSpot deal:

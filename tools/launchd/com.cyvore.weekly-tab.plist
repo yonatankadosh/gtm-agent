@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cyvore.weekly-tab</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/yonatankadosh/Documents/GTM agent/tools/generate-weekly-tab.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/yonatankadosh/Documents/GTM agent</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/yonatankadosh/Documents/GTM agent/tools/launchd/weekly-tab.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/yonatankadosh/Documents/GTM agent/tools/launchd/weekly-tab.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>/Users/yonatankadosh</string>
+    </dict>
+</dict>
+</plist>

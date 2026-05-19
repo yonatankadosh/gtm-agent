@@ -13,9 +13,12 @@
 
 set -e
 
+PROJECT="gtm-agent-492216"
 ZONE="us-central1-a"
 INSTANCE="gtm-bot"
 REMOTE="~/gtm-agent"
+
+GCLOUD_FLAGS=(--project="$PROJECT" --zone="$ZONE")
 
 # --- helpers ----------------------------------------------------------------
 
@@ -23,35 +26,35 @@ wait_for_ssh() {
   local i
   echo "  Waiting for SSH..."
   for i in $(seq 1 60); do
-    if gcloud compute ssh "$INSTANCE" --zone="$ZONE" --quiet --command="true" 2>/dev/null; then
+    if gcloud compute ssh "$INSTANCE" "${GCLOUD_FLAGS[@]}" --quiet --command="true" 2>/dev/null; then
       echo "  SSH ready."
       return 0
     fi
     sleep 3
   done
   echo "ERROR: SSH never became available after 3 minutes."
-  echo "Try:  gcloud compute ssh $INSTANCE --zone=$ZONE"
+  echo "Try:  gcloud compute ssh $INSTANCE --project=$PROJECT --zone=$ZONE"
   exit 1
 }
 
 ensure_vm_running() {
   local status
-  status=$(gcloud compute instances describe "$INSTANCE" --zone="$ZONE" \
+  status=$(gcloud compute instances describe "$INSTANCE" "${GCLOUD_FLAGS[@]}" \
            --format='get(status)' 2>/dev/null) || {
-    echo "ERROR: Instance '$INSTANCE' not found in zone $ZONE."
+    echo "ERROR: Instance '$INSTANCE' not found in project $PROJECT zone $ZONE."
     exit 1
   }
 
   if [[ "$status" != "RUNNING" ]]; then
     echo "  VM status: $status — starting..."
-    gcloud compute instances start "$INSTANCE" --zone="$ZONE" --quiet
+    gcloud compute instances start "$INSTANCE" "${GCLOUD_FLAGS[@]}" --quiet
   fi
 
   wait_for_ssh
 }
 
 remote_cmd() {
-  gcloud compute ssh "$INSTANCE" --zone="$ZONE" --quiet --command="$1"
+  gcloud compute ssh "$INSTANCE" "${GCLOUD_FLAGS[@]}" --quiet --command="$1"
 }
 
 # --- main -------------------------------------------------------------------
@@ -60,30 +63,38 @@ echo "=== Syncing to $INSTANCE ($ZONE) ==="
 ensure_vm_running
 
 echo "  Creating remote directories..."
-remote_cmd "mkdir -p $REMOTE/tools $REMOTE/output/research/icp-a-suite $REMOTE/output/research/icp-b-feed $REMOTE/output/research/icp-c-marketplace $REMOTE/output/research/icp-d-telecom $REMOTE/output/outreach/icp-a-suite $REMOTE/output/outreach/icp-b-feed $REMOTE/output/outreach/icp-c-marketplace $REMOTE/output/outreach/icp-d-telecom"
+remote_cmd "mkdir -p $REMOTE/tools $REMOTE/state $REMOTE/output/pipeline $REMOTE/output/research/icp-a-suite $REMOTE/output/research/icp-b-feed $REMOTE/output/research/icp-c-marketplace $REMOTE/output/research/icp-d-telecom $REMOTE/output/outreach/icp-a-suite $REMOTE/output/outreach/icp-b-feed $REMOTE/output/outreach/icp-c-marketplace $REMOTE/output/outreach/icp-d-telecom"
 
 echo "  -> tools/"
-gcloud compute scp --zone="$ZONE" \
+gcloud compute scp "${GCLOUD_FLAGS[@]}" \
   tools/telegram-bot.py \
   tools/send-email.py \
   tools/apollo-enrich.py \
+  tools/hubspot-leads.py \
+  tools/generate-weekly-tab.py \
   tools/vm-restart-bot.sh \
   tools/email-config.json \
+  tools/hubspot-config.json \
   "$INSTANCE:$REMOTE/tools/"
 
+echo "  -> state/ (hubspot-mapping.json — required by bot's HubSpot write commands)"
+gcloud compute scp "${GCLOUD_FLAGS[@]}" \
+  state/hubspot-mapping.json \
+  "$INSTANCE:$REMOTE/state/"
+
 echo "  -> requirements.txt"
-gcloud compute scp --zone="$ZONE" requirements.txt "$INSTANCE:$REMOTE/"
+gcloud compute scp "${GCLOUD_FLAGS[@]}" requirements.txt "$INSTANCE:$REMOTE/"
 
 echo "  -> output/research/"
 for d in output/research/icp-*/; do
   [ -d "$d" ] || continue
-  gcloud compute scp --zone="$ZONE" --recurse "$d" "$INSTANCE:$REMOTE/output/research/"
+  gcloud compute scp "${GCLOUD_FLAGS[@]}" --recurse "$d" "$INSTANCE:$REMOTE/output/research/"
 done
 
 echo "  -> output/outreach/"
 for d in output/outreach/icp-*/; do
   [ -d "$d" ] || continue
-  gcloud compute scp --zone="$ZONE" --recurse "$d" "$INSTANCE:$REMOTE/output/outreach/"
+  gcloud compute scp "${GCLOUD_FLAGS[@]}" --recurse "$d" "$INSTANCE:$REMOTE/output/outreach/"
 done
 
 echo "  Installing deps & restarting bot..."

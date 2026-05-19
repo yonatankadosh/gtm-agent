@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy this file to tools/google-sheets-config.json (gitignored) and fill in the values. See agents/sales/AGENT.md > 'Google Sheets via service account' for the full setup walkthrough.",
+  "sheet_id": "PASTE_SHEET_ID_FROM_URL_HERE",
+  "credentials_path": "tools/google-sheets-credentials.json",
+  "_sheet_id_hint": "From a URL like https://docs.google.com/spreadsheets/d/SHEET_ID/edit#gid=0 — paste only the SHEET_ID portion.",
+  "_credentials_path_hint": "Relative to repo root. The JSON key file you downloaded from Google Cloud Console -> IAM -> Service Accounts -> your account -> Keys -> Add key -> JSON.",
+  "_share_hint": "Open the credentials JSON, copy the 'client_email' value (looks like gtm-agent-sheets@your-project.iam.gserviceaccount.com), then share the Google Sheet with that email as Editor."
+}
