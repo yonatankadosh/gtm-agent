@@ -35,8 +35,8 @@ HubSpot. (Hard kills still go through the explicit Phase 4 / hubspot-batch
 kill flow.)
 
 Outputs (always):
-  - output/pipeline/{YYYY-WW}-merge-plan.json    hubspot-batch.py compatible
-  - output/pipeline/{YYYY-WW}-merge-report.md    human-readable diff report
+  - output/pipeline/{YYYY-WW}/merge-plan.json    hubspot-batch.py compatible
+  - output/pipeline/{YYYY-WW}/merge-report.md    human-readable diff report
   - JSON summary on stdout
 
 Modes:
@@ -47,9 +47,9 @@ Modes:
                        mapping key.
 
 Usage:
-    python3 tools/sheet-hubspot-merge.py
-    python3 tools/sheet-hubspot-merge.py --tab 18.05.2026
-    python3 tools/sheet-hubspot-merge.py --apply
+    python3 tools/sheets/sheet-hubspot-merge.py
+    python3 tools/sheets/sheet-hubspot-merge.py --tab 18.05.2026
+    python3 tools/sheets/sheet-hubspot-merge.py --apply
 """
 
 import argparse
@@ -64,12 +64,12 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-HS_CONFIG = REPO_ROOT / "tools" / "hubspot-config.json"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+HS_CONFIG = REPO_ROOT / "tools" / "hubspot" / "hubspot-config.json"
 MAPPING_PATH = REPO_ROOT / "state" / "hubspot-mapping.json"
 SNAPSHOT_DIR = REPO_ROOT / "state" / "sheet-snapshots"
 PIPELINE_DIR = REPO_ROOT / "output" / "pipeline"
-HUBSPOT_BATCH = REPO_ROOT / "tools" / "hubspot-batch.py"
+HUBSPOT_BATCH = REPO_ROOT / "tools" / "hubspot" / "hubspot-batch.py"
 
 API_BASE = "https://api.hubapi.com"
 LEADS_OBJECT_TYPE = "0-136"
@@ -170,7 +170,7 @@ def fetch_all_objects(token, object_type, properties):
 
 def load_sheets_client():
     spec = importlib.util.spec_from_file_location(
-        "sheets_client", REPO_ROOT / "tools" / "sheets-client.py"
+        "sheets_client", REPO_ROOT / "tools" / "sheets" / "sheets-client.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -736,7 +736,7 @@ def main():
                     help="Tab name to consolidate (DD.MM.YYYY). Default: latest dated tab.")
     ap.add_argument("--snapshot", default=None,
                     help="Path to snapshot JSON. Default: state/sheet-snapshots/{tab}.json")
-    ap.add_argument("--config", default=None, help="Path to tools/google-sheets-config.json")
+    ap.add_argument("--config", default=None, help="Path to tools/sheets/google-sheets-config.json")
     ap.add_argument("--apply", action="store_true",
                     help="Apply the plan via hubspot-batch.py and update the mapping with new IDs.")
     ap.add_argument("--dry-run", action="store_true",
@@ -785,10 +785,11 @@ def main():
     )
 
     yyyy_ww = iso_week_of_tab(tab_name) or "unknown-week"
-    PIPELINE_DIR.mkdir(parents=True, exist_ok=True)
-    plan_path = PIPELINE_DIR / f"{yyyy_ww}-merge-plan.json"
+    week_dir = PIPELINE_DIR / yyyy_ww
+    week_dir.mkdir(parents=True, exist_ok=True)
+    plan_path = week_dir / "merge-plan.json"
     plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False), encoding="utf-8")
-    report_path = PIPELINE_DIR / f"{yyyy_ww}-merge-report.md"
+    report_path = week_dir / "merge-report.md"
     report_md = render_report_md(tab_name, snapshot, plan, report, counts, sc.spreadsheet_url)
     report_path.write_text(report_md, encoding="utf-8")
 

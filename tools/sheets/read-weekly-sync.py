@@ -3,8 +3,8 @@
 Read the Cyvore GTM Weekly Sync Google Sheet and emit structured data.
 
 The canonical workbook is the Google Sheet configured at
-`tools/google-sheets-config.json`. Each tab is one weekly review, named in
-the user's convention `DD.MM.YYYY` (e.g. `10.05.2026`). Each tab has a
+`tools/sheets/google-sheets-config.json`. Each tab is one weekly review, named
+in the user's convention `DD.MM.YYYY` (e.g. `10.05.2026`). Each tab has a
 header row with these 8 columns (unchanged from the deprecated xlsx era):
 
     Tier | Company/Lead Name | Deal/Lead Stage | Status | Next Step | Assignee | Done? | moving status
@@ -13,27 +13,27 @@ Modes:
 
     Default (no flags) — print the latest tab as JSON to stdout.
 
-        python3 tools/read-weekly-sync.py
+        python3 tools/sheets/read-weekly-sync.py
 
     --week YYYY-WW — pick the tab whose date falls in this ISO week.
 
-        python3 tools/read-weekly-sync.py --week 2026-19
+        python3 tools/sheets/read-weekly-sync.py --week 2026-19
 
     --prior — also include the prior tab (one position before the chosen
     tab). Useful for Done? reconciliation. JSON output gains a "prior" key.
 
-        python3 tools/read-weekly-sync.py --prior
+        python3 tools/sheets/read-weekly-sync.py --prior
 
     --by-assignee — write one markdown task file per Assignee under
     output/exec-comms/weekly-tasks/{YYYY-WW}/{owner-slug}.md, instead of
     JSON to stdout. Each file lists this week's owned rows + prior week's
     incomplete rows (Done? empty), plus a one-line send-email snippet.
 
-        python3 tools/read-weekly-sync.py --by-assignee
+        python3 tools/sheets/read-weekly-sync.py --by-assignee
 
     --list — list all tab names and exit.
 
-    --config PATH — override the path to tools/google-sheets-config.json
+    --config PATH — override the path to tools/sheets/google-sheets-config.json
     (default: standard location).
 
 Multi-owner cells like "Yoav, Ori" are split — each owner gets the row in
@@ -48,7 +48,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 TASKS_ROOT = REPO_ROOT / "output" / "exec-comms" / "weekly-tasks"
 
 EXPECTED_HEADERS = [
@@ -65,7 +65,7 @@ EXPECTED_HEADERS = [
 
 def load_sheets_client():
     spec = importlib.util.spec_from_file_location(
-        "sheets_client", REPO_ROOT / "tools" / "sheets-client.py"
+        "sheets_client", REPO_ROOT / "tools" / "sheets" / "sheets-client.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -184,7 +184,7 @@ def render_owner_md(owner, week_iso, this_week_rows, prior_incomplete_rows, shee
     lines.append("")
     lines.append("```")
     lines.append(
-        f'python tools/send-email.py --to "{owner.lower()}@cyvore.com" '
+        f'python tools/email/send-email.py --to "{owner.lower()}@cyvore.com" '
         f'--subject "Weekly tasks — Week {week_iso}" '
         f'--file "output/exec-comms/weekly-tasks/{week_iso}/{owner_slug}.md"'
     )
@@ -241,7 +241,7 @@ def main():
     p.add_argument(
         "--config",
         default=None,
-        help="Path to tools/google-sheets-config.json (default: standard location)",
+        help="Path to tools/sheets/google-sheets-config.json (default: standard location)",
     )
     args = p.parse_args()
 
@@ -258,7 +258,7 @@ def main():
     if not tabs:
         sys.stderr.write(
             "ERROR: no date-named tabs found in the Sheet. Seed it first via "
-            "tools/migrate-xlsx-to-sheet.py or tools/generate-weekly-tab.py.\n"
+            "tools/sheets/migrate-xlsx-to-sheet.py or tools/sheets/generate-weekly-tab.py.\n"
         )
         sys.exit(2)
 

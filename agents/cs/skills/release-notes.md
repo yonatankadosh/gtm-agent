@@ -16,9 +16,9 @@ Provided by the user in chat:
 
 Constants the skill does NOT ask for:
 
-- **Approver:** always `yonatank@cyvore.com`. Hardcoded in `tools/send-release-note.py`.
+- **Approver:** always `yonatank@cyvore.com`. Hardcoded in `tools/email/send-release-note.py`.
 - **Cyvore-team CC list (default):** `ellar@cyvore.com, peterv@cyvore.com, yoav@cyvore.com, yiftach@cyvore.com`. Hardcoded as `DEFAULT_CYVORE_TEAM_CC` in the script; overridable via `--cc` at publish time if the user explicitly asks.
-- **Template:** `agents/cs/templates/release-note.md` (markdown source schema). The rendered HTML is produced by `tools/send-release-note.py` using a locked email-safe template — do not modify the template per release.
+- **Template:** `agents/cs/templates/release-note.md` (markdown source schema). The rendered HTML is produced by `tools/email/send-release-note.py` using a locked email-safe template — do not modify the template per release.
 
 ## Output
 
@@ -81,7 +81,7 @@ Rules:
 Run with `--render-only` to generate the HTML without sending:
 
 ```
-python3 tools/send-release-note.py \
+python3 tools/email/send-release-note.py \
     --file output/cs/release-notes/{date}-{slug}.md \
     --render-only
 ```
@@ -93,7 +93,7 @@ This writes the `.html` sibling. Open it / show the user the markdown source in 
 Once the user confirms the draft, send the preview:
 
 ```
-python3 tools/send-release-note.py \
+python3 tools/email/send-release-note.py \
     --file output/cs/release-notes/{date}-{slug}.md \
     --mode preview
 ```
@@ -113,18 +113,23 @@ Do NOT proceed to publish without explicit approval. There is no silent path fro
 
 ### Step 6: Get the recipient list
 
-Once approved, ask the user for the **recipient list** as a comma-separated list of email addresses. Example:
+Once approved, ask the user for the **recipient list**. There are two shapes; pick the one that matches the release:
 
-> "Approved. Please paste the recipient list (comma-separated customer emails) and I'll publish. I'll CC the Cyvore team (ellar, peterv, yoav, yiftach) on every send — say 'override CC' if you want different CCs for this release."
+- **Per-recipient sends (default):** comma-separated list of customer emails. Each address gets its own email; nobody sees any other customer.
+- **Per-company shared threads:** when a single customer org has multiple stakeholders who should share the thread (e.g. customer admin + their MSP, or two managers at the same company), group them. The script supports this via `--group`: all addresses on `--to` go on the To: line of one email. Run the publish command **once per company** in this mode.
+
+Example dialogue:
+
+> "Approved. Two ways to send: (a) one email per recipient (default), or (b) grouped per company (multiple stakeholders at one customer share a thread). Which one? And paste the recipient list. I'll CC the Cyvore team (ellar, peterv, yoav, yiftach) on every send — say 'override CC' if you want different CCs."
 
 If the user says "override CC", capture the new CC list. Otherwise use the default.
 
 ### Step 7: Publish
 
-Run:
+**Per-recipient mode (default):**
 
 ```
-python3 tools/send-release-note.py \
+python3 tools/email/send-release-note.py \
     --file output/cs/release-notes/{date}-{slug}.md \
     --mode publish \
     --to "<comma-separated recipients>"
@@ -132,9 +137,21 @@ python3 tools/send-release-note.py \
 
 The script sends **one email per recipient** (To: just that person), with the Cyvore team on CC for every send. Each customer's thread therefore shows only themselves + the Cyvore team — they do not see other customers on To:.
 
-If the user gave a CC override, add `--cc "<list>"` to the command.
+**Grouped-per-company mode (`--group`):**
 
-Confirm in chat: "Published to N recipients. CC on every send: {list}. Files at `output/cs/release-notes/{date}-{slug}.md` and `.html`."
+```
+# One run per company; --to lists every stakeholder at THAT company
+python3 tools/email/send-release-note.py \
+    --file output/cs/release-notes/{date}-{slug}.md \
+    --mode publish --group \
+    --to "admin@customer.com,msp@partner.com"
+```
+
+All `--to` addresses share the To: line of a single email. Use this when a customer org has multiple stakeholders who should see each other on the thread (admin + MSP, or co-owners at the same customer). For multiple companies, run the command once per company. Customers across companies still never see each other — only the in-group recipients share the thread.
+
+If the user gave a CC override, add `--cc "<list>"` to the command (works in both modes).
+
+Confirm in chat: "Published N email(s) covering M recipient(s). CC on every send: {list}. Files at `output/cs/release-notes/{date}-{slug}.md` and `.html`."
 
 ---
 
@@ -152,7 +169,7 @@ The markdown source file uses the schema in `agents/cs/templates/release-note.md
 - [ ] No fabricated metrics — every number traces to a real source, or the language is qualitative
 - [ ] Headline and subtitle make sense without reading the rest
 - [ ] Preview was sent to `yonatank@cyvore.com` and explicitly approved before any customer send
-- [ ] Each customer received the email individually (To: = single customer, not a group)
+- [ ] Each customer org received the email in the intended shape (per-recipient by default, or grouped per company with `--group` when the user explicitly asked for a shared thread)
 - [ ] Cyvore-team CC list was on every send unless the user explicitly overrode it
 - [ ] Both `.md` and `.html` sibling files exist in `output/cs/release-notes/`
 - [ ] Subject line is `Cyvore - Platform Release: {title}` (preview is `[PREVIEW] Cyvore - Platform Release: {title}`)

@@ -35,7 +35,7 @@ Each write command first replies with a "About to..." preview; you must send
 
     /help                               -- show available commands
 
-Start with:  python3 tools/telegram-bot.py
+Start with:  python3 tools/telegram/telegram-bot.py
 """
 
 from __future__ import annotations
@@ -69,9 +69,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent
-CONFIG_PATH = SCRIPT_DIR / "email-config.json"
-HUBSPOT_CONFIG_PATH = SCRIPT_DIR / "hubspot-config.json"
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+CONFIG_PATH = PROJECT_ROOT / "tools" / "email" / "email-config.json"
+HUBSPOT_CONFIG_PATH = PROJECT_ROOT / "tools" / "hubspot" / "hubspot-config.json"
 HUBSPOT_MAPPING_PATH = PROJECT_ROOT / "state" / "hubspot-mapping.json"
 RESEARCH_DIR = PROJECT_ROOT / "output" / "research"
 OUTREACH_DIR = PROJECT_ROOT / "output" / "outreach"
@@ -703,11 +703,11 @@ def pop_pending(chat_id: int) -> dict | None:
 
 
 def append_quick_update_log(entry_line: str) -> None:
-    """Append a one-line audit entry to output/pipeline/{YYYY-WW}-sync-log.md.
+    """Append a one-line audit entry to output/pipeline/{YYYY-WW}/sync-log.md.
     Creates the file with a minimal header if missing. Mirrors the format
     used by agents/sales/skills/hubspot-quick-update.md."""
     week = datetime.now().strftime("%G-%V")
-    log_path = PROJECT_ROOT / "output" / "pipeline" / f"{week}-sync-log.md"
+    log_path = PROJECT_ROOT / "output" / "pipeline" / week / "sync-log.md"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if not log_path.exists():
         log_path.write_text(
@@ -727,7 +727,7 @@ async def _setup_check(update: Update) -> tuple[str, dict] | None:
     token = hubspot_token()
     if not token:
         await update.message.reply_text(
-            "HubSpot Private App token not configured. Add tools/hubspot-config.json on the bot host."
+            "HubSpot Private App token not configured. Add tools/hubspot/hubspot-config.json on the bot host."
         )
         return None
     mapping = load_mapping()
@@ -1328,7 +1328,7 @@ def main():
     config = load_config()
     token = config.get("telegram_bot_token")
     if not token:
-        logger.error("No telegram_bot_token in config. Add it to tools/email-config.json")
+        logger.error("No telegram_bot_token in config. Add it to tools/email/email-config.json")
         sys.exit(1)
 
     app = (

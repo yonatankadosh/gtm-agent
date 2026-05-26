@@ -6,7 +6,7 @@ Built for solo GTM operators and small teams who need pipeline without an army o
 
 ## How It Works
 
-The project has **7 skills** organized into **two engines**. Each skill is a detailed methodology file — not a loose prompt, but a structured framework with steps, scoring models, output schemas, and quality checklists.
+The project has **8 skills** organized into **two engines**. Each skill is a detailed methodology file — not a loose prompt, but a structured framework with steps, scoring models, output schemas, and quality checklists.
 
 You provide your product context and customer data. The agent executes skills on demand, producing structured output you can act on immediately.
 
@@ -28,6 +28,7 @@ You provide your product context and customer data. The agent executes skills on
 | **05 — Qualification & Scoring** | Scores accounts on Fit, Timing, Access, and Intent (1–3 per dimension, 12-point scale) with a clear next action. |
 | **06 — Signal-Based Outbound** | Reactive outreach triggered by a buying signal — classified by urgency tier with timing SLAs. |
 | **07 — Meeting Prep** | Pre-meeting brief with attendee profiles, prepared questions, objection anticipation, and a structured meeting flow. |
+| **08 — Inbound Qualification** | Full research + qualification of an unknown account — ICP classification, full Skill 04 research, score, and route (Tier 1 / Tier 2 / Pass). Entry point for anything not already in `target-accounts.md`. |
 
 ## Getting Started
 
@@ -86,6 +87,8 @@ GTM-agent/
         03-outreach-strategy.md
         06-signal-outbound.md
         pipeline-maintenance.md
+        hubspot-quick-update.md
+        hubspot-status-sync.md
     chief-of-staff/
       AGENT.md
       skills/
@@ -101,13 +104,16 @@ GTM-agent/
     research/{icp}/{slug}.md            # Per-account research
     outreach/{icp}/{slug}.md            # Per-account outreach drafts
     meeting-prep/{slug}-{date}.md       # Pre-meeting briefs
-    pipeline/{YYYY-WW}.md               # Weekly pipeline snapshots
+    pipeline/{YYYY-WW}/                 # Per-week pipeline subfolder
+      snapshot.md                       # pipeline-maintenance output
+      sync-log.md                       # HubSpot writes audit log
+      merge-plan.json / merge-report.md # hubspot-status-sync outputs
     exec-comms/{audience}/{date}.md     # Digests, board, investor, all-hands
+    exec-comms/weekly-tasks/{week}/     # Per-assignee task files
     marketing/, partnerships/, cs/      # Per-agent artifacts
-  tools/
-    send-email.py
-    telegram-bot.py
-    apollo-enrich.py
+    industry-reports/                   # Vertical market reports (Marketing reads)
+  tools/                                # Subfoldered by integration
+    apollo/   email/   hubspot/   sheets/   telegram/   ops/   assets/
   .cursor/
     rules/gtm-agent.mdc                 # Cursor rule — auto-loaded
     mcp.json                            # HubSpot MCP config (gitignored)

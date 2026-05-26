@@ -19,7 +19,7 @@ flowchart TB
     Orch --> CS["Customer Success<br/>post-sale"]
     Sales <--> HS[("HubSpot via MCP<br/>read+write")]
     CS -. "read-only" .-> HS
-    Sales --> PipeFile[("output/pipeline/{week}.md")]
+    Sales --> PipeFile[("output/pipeline/{week}/snapshot.md")]
     PipeFile --> CoS
     RBD --> ResearchFiles[("output/research/{icp}/{slug}.md")]
     ResearchFiles -. "on-demand reads<br/>by exact path" .-> Sales
@@ -99,12 +99,12 @@ What each agent guarantees to produce — so downstream agents and the Orchestra
 
 ### Sales
 - **Reads:** common context + `output/target-accounts.md` + `output/outreach-strategy.md`; on demand: `output/research/{icp}/{slug}.md` for the current account, prior `output/outreach/{icp}/{slug}.md`, HubSpot via MCP.
-- **Writes:** `output/outreach/{icp}/{slug}.md`, `output/outreach-learnings.md` (appends), `output/pipeline/{YYYY-WW}.md` (weekly snapshot, never overwrites prior weeks). HubSpot writes are explicit and confirmed.
+- **Writes:** `output/outreach/{icp}/{slug}.md`, `output/outreach-learnings.md` (appends), `output/pipeline/{YYYY-WW}/snapshot.md` (weekly snapshot, never overwrites prior weeks). HubSpot writes are explicit and confirmed.
 - **Skills inherited:** 03, 06 + pipeline-maintenance.
 - **Returns to Orchestrator:** path to the file(s) written + summary + any HubSpot hygiene actions surfaced.
 
 ### Chief of Staff
-- **Reads:** common context + `state/weekly-context.md` + `state/okrs.md`; on demand: latest `output/pipeline/{YYYY-WW}.md`, `output/research/{icp}/{slug}.md` for the meeting target, prior `output/meeting-prep/`, prior `output/exec-comms/`, `output/outreach-learnings.md`. **For `audience=weekly`:** also reads the Cyvore GTM Weekly Sync Google Sheet via `python3 tools/read-weekly-sync.py` (replaces the deprecated `state/weekly-customer-sync.xlsx` — archived during the 2026-W22 migration).
+- **Reads:** common context + `state/weekly-context.md` + `state/okrs.md`; on demand: latest `output/pipeline/{YYYY-WW}/snapshot.md`, `output/research/{icp}/{slug}.md` for the meeting target, prior `output/meeting-prep/`, prior `output/exec-comms/`, `output/outreach-learnings.md`. **For `audience=weekly`:** also reads the Cyvore GTM Weekly Sync Google Sheet via `python3 tools/sheets/read-weekly-sync.py` (replaces the deprecated `state/weekly-customer-sync.xlsx` — archived during the 2026-W22 migration).
 - **Writes:** `output/meeting-prep/{slug}-{date}.md`, `output/exec-comms/{audience}/{date}.md`, `output/exec-comms/weekly-tasks/{YYYY-WW}/{owner}.md` (audience=weekly side artifact), `state/weekly-context.md` (prepend, via the weekly-context skill).
 - **Skills inherited:** 07 + exec-comms (audience-aware composition) + weekly-context (5-question interview).
 - **Reads HubSpot:** never. Pipeline state comes from Sales' snapshot.
@@ -131,12 +131,12 @@ What each agent guarantees to produce — so downstream agents and the Orchestra
 
 When the user says **"run weekly"** (or equivalent), execute four steps back-to-back. Confirm before starting:
 
-0. **Pre-flight (sync sheet check):** confirm the Cyvore GTM Weekly Sync Google Sheet contains a tab whose date falls in the current ISO week. Run `python3 tools/read-weekly-sync.py --list` to inspect. If the current week's tab is missing (the Mon 06:00 cron didn't fire, or it's an off-cycle digest), run `python3 tools/generate-weekly-tab.py` to create it from current HubSpot state. If that also fails, surface the error to the user with the path to `tools/google-sheets-config.json` for inspection. Never invent the sheet.
+0. **Pre-flight (sync sheet check):** confirm the Cyvore GTM Weekly Sync Google Sheet contains a tab whose date falls in the current ISO week. Run `python3 tools/sheets/read-weekly-sync.py --list` to inspect. If the current week's tab is missing (the Mon 06:00 cron didn't fire, or it's an off-cycle digest), run `python3 tools/sheets/generate-weekly-tab.py` to create it from current HubSpot state. If that also fails, surface the error to the user with the path to `tools/sheets/google-sheets-config.json` for inspection. Never invent the sheet.
 1. **Greet:** "Running the weekly cadence — three steps: weekly-context interview, pipeline review, weekly digest + per-assignee task files. ~5 minutes total. Go?"
 2. **Step 1 — Weekly Context:** dispatch Chief of Staff's weekly-context skill (5-question interview, writes `state/weekly-context.md`).
-3. **Step 2 — Pipeline Review:** dispatch Sales' pipeline-maintenance skill (HubSpot pull + reconciliation, writes `output/pipeline/{YYYY-WW}.md`). Stages must use Yonatan's labels (`New / Attempting / Connected / In meetings/conversations / Finalizing the POC / Running POC / Closed Won / CS`) — the same taxonomy as the sync sheet.
+3. **Step 2 — Pipeline Review:** dispatch Sales' pipeline-maintenance skill (HubSpot pull + reconciliation, writes `output/pipeline/{YYYY-WW}/snapshot.md`). Stages must use Yonatan's labels (`New / Attempting / Connected / In meetings/conversations / Finalizing the POC / Running POC / Closed Won / CS`) — the same taxonomy as the sync sheet.
 4. **Step 3 — Weekly Digest + Task Files:** dispatch Chief of Staff's exec-comms skill with `audience=weekly`. Reads the snapshot from Step 2, the context from Step 1, and the latest tab of the sync sheet. Writes `output/exec-comms/weekly/{YYYY-WW}.md` AND per-assignee files at `output/exec-comms/weekly-tasks/{YYYY-WW}/{owner}.md`.
-5. **Summary:** show the user the artifacts created (digest + N owner task files). Ask if they want to email the digest and/or each owner's task file using `tools/send-email.py`.
+5. **Summary:** show the user the artifacts created (digest + N owner task files). Ask if they want to email the digest and/or each owner's task file using `tools/email/send-email.py`.
 
 If any step fails (e.g., HubSpot MCP not connected, user aborts the interview, sync sheet's current-week tab missing), surface the failure and stop. Never continue with stale or missing data.
 
@@ -163,13 +163,13 @@ If any step fails (e.g., HubSpot MCP not connected, user aborts the interview, s
 1. Dispatch Research & BizDev with the account name. R&BD writes `output/research/{icp}/{slug}.md` and returns to the Orchestrator.
 2. Show the user the research summary. Ask: "Proceed to outreach draft?"
 3. On confirmation, dispatch Sales' Skill 03. Sales reads the research file by exact path, drafts outreach, and writes `output/outreach/{icp}/{slug}.md`.
-4. Show the draft. Ask if the user wants to send via `tools/send-email.py`.
+4. Show the draft. Ask if the user wants to send via `tools/email/send-email.py`.
 
 ## Error and edge cases
 
 - **HubSpot MCP not connected** (when the requested skill needs it): stop. Tell the user to wire the HubSpot MCP server in Cursor settings before retrying. Do NOT fabricate pipeline data.
 - **Empty HubSpot:** run anyway. The pipeline snapshot will say "0 open deals" with a clear "this is real, not an error" note. The reconciliation findings (research without deals, outreach without deals) become the main content.
-- **Missing current-week tab in the Cyvore GTM Weekly Sync Sheet** (audience=weekly): try `python3 tools/generate-weekly-tab.py` first (creates the tab from live HubSpot). If that also fails (Sheets credentials not configured, or generator errored), stop and ask the user to inspect `tools/google-sheets-config.json` / add the tab manually. Do NOT generate the weekly digest from prior-week data silently.
+- **Missing current-week tab in the Cyvore GTM Weekly Sync Sheet** (audience=weekly): try `python3 tools/sheets/generate-weekly-tab.py` first (creates the tab from live HubSpot). If that also fails (Sheets credentials not configured, or generator errored), stop and ask the user to inspect `tools/sheets/google-sheets-config.json` / add the tab manually. Do NOT generate the weekly digest from prior-week data silently.
 - **No `state/weekly-context.md` entry for this week:** skip the freshness check, run the weekly-context interview, then proceed.
 - **Stale weekly context (>7 days old):** surface to the user, recommend re-running the interview before generating any digest/board/investor artifact.
 - **Missing research file** when a downstream agent needs it: return to the Orchestrator. Ask the user whether to route to Research & BizDev first.

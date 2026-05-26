@@ -4,7 +4,7 @@
 
 Produce a weekly state-of-pipeline snapshot that reflects the live HubSpot reality, reconciled with the work done in `output/research/` and `output/outreach/`. Optimized for a startup with sparse pipeline and a single CRM admin: the value is reconciliation + hygiene + narrative, not forecasting.
 
-This skill is owned by the Sales agent. Sales is the only agent with HubSpot write access and the only writer of `output/pipeline/{YYYY-WW}.md`. Other agents (especially Chief of Staff) read the snapshot file — they do not query HubSpot directly.
+This skill is owned by the Sales agent. Sales is the only agent with HubSpot write access and the only writer of `output/pipeline/{YYYY-WW}/snapshot.md`. Other agents (especially Chief of Staff) read the snapshot file — they do not query HubSpot directly.
 
 ## Inputs
 
@@ -21,7 +21,7 @@ This skill is owned by the Sales agent. Sales is the only agent with HubSpot wri
 
 ## Output
 
-Write to `output/pipeline/{YYYY-WW}.md` (ISO week, e.g. `output/pipeline/2026-18.md`).
+Write to `output/pipeline/{YYYY-WW}/snapshot.md` (ISO week, e.g. `output/pipeline/2026-18/snapshot.md`).
 
 Never overwrite a prior week's file — each weekly run creates a new dated file so the history is auditable.
 

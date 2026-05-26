@@ -53,7 +53,7 @@ When the Orchestrator dispatches you, pick the matching skill.
 - `output/cs/{customer-slug}/churn-risk.md`
 - `output/cs/{customer-slug}/story.md`
 - `output/cs/{customer-slug}/renewal-{YYYY-MM-DD}.md`
-- `output/cs/release-notes/{YYYY-MM-DD}-{slug}.md` (+ `.html` sibling, written by `tools/send-release-note.py`)
+- `output/cs/release-notes/{YYYY-MM-DD}-{slug}.md` (+ `.html` sibling, written by `tools/email/send-release-note.py`)
 
 ### HubSpot access
 

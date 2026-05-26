@@ -72,7 +72,7 @@ For Research & BizDev itself, the rule is slightly different since you are the w
 
 ## Tools you may run
 
-- `python3 tools/apollo-enrich.py` — Apollo enrichment for contact emails. **You run this yourself in the terminal — do not ask the user.** Use `search` (free) when you only have a title/role. Use `enrich` (1 credit) when you have full name + domain. Merge results into the Key People table and into `output/target-accounts.md`. If the API key is missing or errors, note it under "Research Gaps" and continue — do not fabricate emails.
+- `python3 tools/apollo/apollo-enrich.py` — Apollo enrichment for contact emails. **You run this yourself in the terminal — do not ask the user.** Use `search` (free) when you only have a title/role. Use `enrich` (1 credit) when you have full name + domain. Merge results into the Key People table and into `output/target-accounts.md`. If the API key is missing or errors, note it under "Research Gaps" and continue — do not fabricate emails.
 
 ## Routing decisions you make
 

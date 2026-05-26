@@ -61,6 +61,6 @@ subtitle: <One sentence under the title — what changed, in plain language>
 - No fabricated benchmarks or metrics. If you don't have a real number, leave it qualitative.
 - No internal product names or internal Jira tags — translate to customer-facing language.
 
-**Rendered by**: `tools/send-release-note.py`. The script reads the YAML frontmatter (`title`, `subtitle`) and the three sections (`TL;DR`, `Changelog`, `Closing`) and renders into the locked Cyvore email-safe HTML template with the Cyvore mark embedded as a CID inline image.
+**Rendered by**: `tools/email/send-release-note.py`. The script reads the YAML frontmatter (`title`, `subtitle`) and the three sections (`TL;DR`, `Changelog`, `Closing`) and renders into the locked Cyvore email-safe HTML template with the Cyvore mark embedded as a CID inline image.
 
 **Output filename**: `output/cs/release-notes/{YYYY-MM-DD}-{slug}.md` (and `.html` sibling once rendered).

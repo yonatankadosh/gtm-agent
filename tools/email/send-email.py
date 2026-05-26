@@ -4,12 +4,12 @@ Send a markdown research/outreach file as a formatted HTML email
 with the original .md attached.
 
 Usage:
-    python tools/send-email.py \
+    python tools/email/send-email.py \
         --to "recipient@example.com" \
         --subject "Account Research: Cyera" \
         --file "output/research/icp-a-suite/cyera.md"
 
-    python tools/send-email.py \
+    python tools/email/send-email.py \
         --to "recipient@example.com" \
         --cc "colleague@example.com" \
         --subject "Account Research: Cyera" \

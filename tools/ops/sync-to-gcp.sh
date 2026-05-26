@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sync bot code + research files from your Mac TO the GCP VM.
 #
-# Run on your Mac (from the repo root):   bash tools/sync-to-gcp.sh
+# Run on your Mac (from the repo root):   bash tools/ops/sync-to-gcp.sh
 # Do NOT run this on the VM.
 #
 # What it does:
@@ -67,14 +67,14 @@ remote_cmd "mkdir -p $REMOTE/tools $REMOTE/state $REMOTE/output/pipeline $REMOTE
 
 echo "  -> tools/"
 gcloud compute scp "${GCLOUD_FLAGS[@]}" \
-  tools/telegram-bot.py \
-  tools/send-email.py \
-  tools/apollo-enrich.py \
-  tools/hubspot-leads.py \
-  tools/generate-weekly-tab.py \
-  tools/vm-restart-bot.sh \
-  tools/email-config.json \
-  tools/hubspot-config.json \
+  tools/telegram/telegram-bot.py \
+  tools/email/send-email.py \
+  tools/apollo/apollo-enrich.py \
+  tools/hubspot/hubspot-leads.py \
+  tools/sheets/generate-weekly-tab.py \
+  tools/telegram/vm-restart-bot.sh \
+  tools/email/email-config.json \
+  tools/hubspot/hubspot-config.json \
   "$INSTANCE:$REMOTE/tools/"
 
 echo "  -> state/ (hubspot-mapping.json — required by bot's HubSpot write commands)"
@@ -98,6 +98,6 @@ for d in output/outreach/icp-*/; do
 done
 
 echo "  Installing deps & restarting bot..."
-remote_cmd "cd $REMOTE && pip3 install --break-system-packages -q -r requirements.txt 2>/dev/null; sudo systemctl restart gtm-bot 2>/dev/null || echo 'NOTE: gtm-bot systemd service not set up yet — run tools/vm-restart-bot.sh on the VM to start manually'"
+remote_cmd "cd $REMOTE && pip3 install --break-system-packages -q -r requirements.txt 2>/dev/null; sudo systemctl restart gtm-bot 2>/dev/null || echo 'NOTE: gtm-bot systemd service not set up yet — run tools/vm-restart-bot.sh on the VM to start manually (note: on the VM, the bot files are flat under ~/gtm-agent/tools/, so the local subfolder structure does not propagate)'"
 
 echo "=== Sync complete ==="

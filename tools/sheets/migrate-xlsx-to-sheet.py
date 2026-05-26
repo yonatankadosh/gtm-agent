@@ -10,11 +10,11 @@ operator does that after eyeballing the migrated Sheet).
 
 Run order:
 
-    1. tools/google-sheets-config.json + credentials must exist
-       (see tools/google-sheets-config.json.example).
+    1. tools/sheets/google-sheets-config.json + credentials must exist
+       (see tools/sheets/google-sheets-config.template.json).
     2. The Sheet must be shared with the service-account email as Editor.
-    3. python3 tools/migrate-xlsx-to-sheet.py --dry-run    # preview
-    4. python3 tools/migrate-xlsx-to-sheet.py              # apply
+    3. python3 tools/sheets/migrate-xlsx-to-sheet.py --dry-run    # preview
+    4. python3 tools/sheets/migrate-xlsx-to-sheet.py              # apply
     5. Eyeball the Sheet vs xlsx for one or two tabs to spot-check.
     6. mv state/weekly-customer-sync.xlsx state/archive/weekly-customer-sync-pre-2026-W22.xlsx
 
@@ -36,11 +36,11 @@ Behaviour:
 
 Usage:
 
-    python3 tools/migrate-xlsx-to-sheet.py --dry-run
-    python3 tools/migrate-xlsx-to-sheet.py
-    python3 tools/migrate-xlsx-to-sheet.py --only-week 2026-19
-    python3 tools/migrate-xlsx-to-sheet.py --force
-    python3 tools/migrate-xlsx-to-sheet.py --apply-validations-only
+    python3 tools/sheets/migrate-xlsx-to-sheet.py --dry-run
+    python3 tools/sheets/migrate-xlsx-to-sheet.py
+    python3 tools/sheets/migrate-xlsx-to-sheet.py --only-week 2026-19
+    python3 tools/sheets/migrate-xlsx-to-sheet.py --force
+    python3 tools/sheets/migrate-xlsx-to-sheet.py --apply-validations-only
 """
 
 import argparse
@@ -51,7 +51,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_XLSX = REPO_ROOT / "state" / "weekly-customer-sync.xlsx"
 
 EXPECTED_HEADERS = [
@@ -73,7 +73,7 @@ def die(msg, code=2):
 
 def load_sheets_client():
     spec = importlib.util.spec_from_file_location(
-        "sheets_client", REPO_ROOT / "tools" / "sheets-client.py"
+        "sheets_client", REPO_ROOT / "tools" / "sheets" / "sheets-client.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -193,7 +193,7 @@ def main():
     p.add_argument("--xlsx", default=str(DEFAULT_XLSX),
                    help=f"Source xlsx path. Default: {DEFAULT_XLSX.relative_to(REPO_ROOT)}")
     p.add_argument("--config", default=None,
-                   help="Path to tools/google-sheets-config.json (default: standard location)")
+                   help="Path to tools/sheets/google-sheets-config.json (default: standard location)")
     p.add_argument("--only-week", default=None, help="Migrate only the tab whose ISO week matches YYYY-WW")
     p.add_argument("--force", action="store_true",
                    help="Overwrite tabs that already exist in the Sheet (default: skip)")

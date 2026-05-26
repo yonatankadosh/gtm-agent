@@ -33,10 +33,10 @@ Behavior (rewritten 2026-W22):
     (silver).
 
 Usage:
-    python3 tools/generate-weekly-tab.py                       # this Monday
-    python3 tools/generate-weekly-tab.py --target-date 2026-05-25
-    python3 tools/generate-weekly-tab.py --force               # overwrite existing
-    python3 tools/generate-weekly-tab.py --dry-run             # plan only
+    python3 tools/sheets/generate-weekly-tab.py                       # this Monday
+    python3 tools/sheets/generate-weekly-tab.py --target-date 2026-05-25
+    python3 tools/sheets/generate-weekly-tab.py --force               # overwrite existing
+    python3 tools/sheets/generate-weekly-tab.py --dry-run             # plan only
 """
 
 import argparse
@@ -51,8 +51,8 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-HS_CONFIG = REPO_ROOT / "tools" / "hubspot-config.json"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+HS_CONFIG = REPO_ROOT / "tools" / "hubspot" / "hubspot-config.json"
 MAPPING_PATH = REPO_ROOT / "state" / "hubspot-mapping.json"
 SNAPSHOT_DIR = REPO_ROOT / "state" / "sheet-snapshots"
 
@@ -611,7 +611,7 @@ def write_snapshot(snapshot_dir, tab_name, monday, generated_at,
                    records, all_deals, all_leads, deal_pipelines, lead_pipelines):
     """Write the post-generation state to state/sheet-snapshots/{tab}.json.
 
-    This is the BASE for the 3-way merge in tools/sheet-hubspot-merge.py:
+    This is the BASE for the 3-way merge in tools/sheets/sheet-hubspot-merge.py:
       - sheet_rows: what generate-weekly-tab.py wrote into the tab. The merge
         compares the user-edited Sheet against this to detect Sheet-side edits.
       - hubspot_records: per-record (id, type, stage, status, next_step,
@@ -673,7 +673,7 @@ def write_snapshot(snapshot_dir, tab_name, monday, generated_at,
 
 def load_sheets_client():
     spec = importlib.util.spec_from_file_location(
-        "sheets_client", REPO_ROOT / "tools" / "sheets-client.py"
+        "sheets_client", REPO_ROOT / "tools" / "sheets" / "sheets-client.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -691,7 +691,7 @@ def main():
     p.add_argument("--dry-run", action="store_true",
                    help="Compute the plan without writing")
     p.add_argument("--config", default=None,
-                   help="Path to tools/google-sheets-config.json")
+                   help="Path to tools/sheets/google-sheets-config.json")
     args = p.parse_args()
 
     if args.target_date:

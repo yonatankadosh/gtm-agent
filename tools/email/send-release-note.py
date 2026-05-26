@@ -42,11 +42,11 @@ Tag vocabulary (extendable in TAG_STYLES below):
   improvement, bug fix, new feature, security, breaking change
 
 Usage:
-    python3 tools/send-release-note.py \
+    python3 tools/email/send-release-note.py \
         --file output/cs/release-notes/2026-05-11-reliability-accuracy.md \
         --mode preview
 
-    python3 tools/send-release-note.py \
+    python3 tools/email/send-release-note.py \
         --file output/cs/release-notes/2026-05-11-reliability-accuracy.md \
         --mode publish \
         --to "alice@customer.com,bob@customer.com"
@@ -63,9 +63,9 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parent
+REPO_ROOT = SCRIPT_DIR.parent.parent
 CONFIG_PATH = SCRIPT_DIR / "email-config.json"
-LOGO_PATH = SCRIPT_DIR / "assets" / "cyvore-logo-mark.png"
+LOGO_PATH = REPO_ROOT / "tools" / "assets" / "cyvore-logo-mark.png"
 
 APPROVER_EMAIL = "yonatank@cyvore.com"
 DEFAULT_CYVORE_TEAM_CC = [
@@ -365,7 +365,14 @@ def main():
                              "publish = one email per recipient with Cyvore-team CCs. "
                              "Required unless --render-only is set.")
     parser.add_argument("--to", default="",
-                        help="Comma-separated recipient list (required for publish; ignored for preview)")
+                        help="Comma-separated recipient list (required for publish; ignored for preview). "
+                             "Default behaviour: one email per address (each customer sees only themselves "
+                             "+ the Cyvore team CC). With --group, all addresses go on the To: line of a "
+                             "single email — use this when multiple stakeholders at one company should "
+                             "share a thread (e.g. customer admin + their MSP).")
+    parser.add_argument("--group", action="store_true",
+                        help="Treat --to as a single email's To: list rather than splitting one-per-address. "
+                             "Run the command once per group (e.g. once per customer org).")
     parser.add_argument("--cc", default="",
                         help="Comma-separated CC override (default: built-in Cyvore team)")
     parser.add_argument("--approver", default=APPROVER_EMAIL,
@@ -424,16 +431,27 @@ def main():
         sys.exit(1)
     cc_addrs = split_csv(args.cc) if args.cc else list(DEFAULT_CYVORE_TEAM_CC)
 
-    sent = []
-    for r in recipients:
-        msg = build_message(cfg["sender_email"], [r], cc_addrs, subject,
-                            html, plain, logo_bytes)
-        smtp_send(cfg, msg, [r] + cc_addrs)
-        sent.append(r)
-        print(f"Sent to: {r}  (CC: {', '.join(cc_addrs) if cc_addrs else '-'})")
+    # Two send modes:
+    #   --group set    -> single email, all --to addresses on the To: line
+    #   --group unset  -> legacy behaviour: one email per To: address (default)
+    if args.group:
+        groups = [recipients]
+    else:
+        groups = [[r] for r in recipients]
 
-    print(f"\nPublished to {len(sent)} recipient(s). CC on every send: "
-          f"{', '.join(cc_addrs) if cc_addrs else '-'}")
+    sent_emails = 0
+    for to_list in groups:
+        msg = build_message(cfg["sender_email"], to_list, cc_addrs, subject,
+                            html, plain, logo_bytes)
+        smtp_send(cfg, msg, to_list + cc_addrs)
+        sent_emails += 1
+        print(f"Sent to: {', '.join(to_list)}  (CC: {', '.join(cc_addrs) if cc_addrs else '-'})")
+
+    n_recipients = sum(len(g) for g in groups)
+    print(
+        f"\nPublished {sent_emails} email(s) covering {n_recipients} recipient(s). "
+        f"CC on every send: {', '.join(cc_addrs) if cc_addrs else '-'}"
+    )
     print(f"Subject: {subject}")
 
 

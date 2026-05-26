@@ -17,10 +17,14 @@ You are a GTM (Go-To-Market) agent operating inside a structured skill system. T
 - `state/` — **Gitignored**, persistent qualitative memory. Small, hand- or interview-curated.
   - `weekly-context.md` — Most recent on top, populated by Chief of Staff's weekly-context interview
   - `okrs.md` — Current quarter objectives (optional, hand-maintained)
-- `tools/` — Utility scripts. Config in `tools/email-config.json` (gitignored).
-  - `send-email.py` — Sends a markdown file as a formatted HTML email with the `.md` attached.
-  - `telegram-bot.py` — Telegram bot for looking up research/outreach files and emailing them. Commands: `/send`, `/outreach`, `/list`. Start with `python3 tools/telegram-bot.py`.
-  - `apollo-enrich.py` — Apollo API enrichment tool. Three modes: `search` (free, find people by company+title), `enrich` (1 credit, get email by name+domain), `batch` (enrich all named contacts in target-accounts.md).
+- `tools/` — Utility scripts grouped by integration. All shared configs are gitignored.
+  - `tools/email/` — `send-email.py` (markdown → HTML email), `send-digest.py` (weekly digest with Sheet link + CSV), `send-release-note.py` (CS release notes). Config: `email-config.json` (gitignored — SMTP, Apollo key, Telegram token, default recipient).
+  - `tools/telegram/` — `telegram-bot.py` (research / outreach lookup + HubSpot quick updates from chat), `vm-restart-bot.sh`.
+  - `tools/apollo/` — `apollo-enrich.py` (`search` free, `enrich` 1 credit, `find` combined, `batch` over target-accounts.md).
+  - `tools/hubspot/` — `hubspot-batch.py` (single-record + batch CLI), `hubspot-leads.py` (Leads REST wrapper). Config: `hubspot-config.json` (gitignored — Private App token).
+  - `tools/sheets/` — Cyvore GTM Weekly Sync Sheet tooling: `sheets-client.py` (gspread wrapper, imported by the others), `generate-weekly-tab.py` (HubSpot → Sheet), `read-weekly-sync.py` (Sheet → JSON / per-assignee files), `sheet-hubspot-merge.py` (3-way merge consolidator), `migrate-xlsx-to-sheet.py` (one-time). Configs (both gitignored): `google-sheets-config.json` (Sheet ID + creds path), `google-sheets-credentials.json` (service-account key). Template: `google-sheets-config.template.json`.
+  - `tools/ops/` — `sync-to-gcp.sh` (sync bot to GCP VM), `launchd/com.cyvore.weekly-tab.plist` (Mon 06:00 cron).
+  - `tools/assets/` — `cyvore-logo-mark.png` (inline logo for HTML emails).
 - `output/` — Where all generated results go. Each agent owns a slice; agents never write outside their slice.
   - `icp.md` — ICP definition document (Research & BizDev)
   - `target-accounts.md` — Prioritized account list (Research & BizDev)
@@ -29,11 +33,13 @@ You are a GTM (Go-To-Market) agent operating inside a structured skill system. T
   - `research/{icp-folder}/{slug}.md` — Per-account research (Research & BizDev). ICP folders: `icp-a-suite`, `icp-b-feed`, `icp-c-marketplace`, `icp-d-telecom`, `uncategorized`.
   - `outreach/{icp-folder}/{slug}.md` — Per-account outreach (Sales)
   - `meeting-prep/{slug}-{date}.md` — Pre-meeting briefs for any meeting type, sales/partner/investor/all-hands (Chief of Staff)
-  - `pipeline/{YYYY-WW}.md` — Weekly pipeline snapshot (Sales)
+  - `pipeline/{YYYY-WW}/` — Per-week pipeline subfolder (Sales). Files: `snapshot.md` (pipeline-maintenance), `sync-log.md` (hubspot-quick-update + hubspot-status-sync audit log), `merge-plan.json` + `merge-report.md` (hubspot-status-sync outputs), optional ad-hoc artifacts (e.g. `hubspot-hygiene-form.md`).
   - `exec-comms/{weekly|board|investor|all-hands}/{date}.md` — Audience-specific comms (Chief of Staff)
-  - `marketing/{content|linkedin}/` — Marketing artifacts (Marketing)
+  - `exec-comms/weekly-tasks/{YYYY-WW}/{owner}.md` — Per-assignee task files (Chief of Staff, audience=weekly side artifact)
+  - `marketing/{content|linkedin|campaigns}/` — Marketing artifacts (Marketing)
   - `partnerships/` — Partner mapping, co-sell plans (Partnerships)
-  - `cs/` — Customer health, expansion plans, churn risk (Customer Success)
+  - `cs/release-notes/` — CS release notes (`.md` source + `.html` rendered) (Customer Success)
+  - `industry-reports/` — Vertical / industry market reports consumed by Marketing's `design-briefs` skill (Research & BizDev writes, Marketing reads)
 
 ## Skills
 
@@ -78,7 +84,7 @@ Beyond the common context, each agent has **always-reads** (loaded every invocat
 
 - **Research & BizDev** — always: common; on-demand: `output/target-accounts.md`, prior `output/research/{icp}/{slug}.md` (only when updating an existing account).
 - **Sales** — always: common + `output/target-accounts.md` + `output/outreach-strategy.md`; on-demand: `output/research/{icp}/{slug}.md` for the current account, prior `output/outreach/{icp}/{slug}.md`, HubSpot via MCP.
-- **Chief of Staff** — always: common + `state/weekly-context.md` + `state/okrs.md`; on-demand: latest `output/pipeline/{YYYY-WW}.md`, `output/research/{icp}/{slug}.md` for the meeting target, prior `output/meeting-prep/`, prior `output/exec-comms/`, `output/outreach-learnings.md`.
+- **Chief of Staff** — always: common + `state/weekly-context.md` + `state/okrs.md`; on-demand: latest `output/pipeline/{YYYY-WW}/snapshot.md`, `output/research/{icp}/{slug}.md` for the meeting target, prior `output/meeting-prep/`, prior `output/exec-comms/`, `output/outreach-learnings.md`.
 - **Marketing** — always: common + `output/outreach-strategy.md`; on-demand: `output/research/{icp}/{slug}.md` for account-specific content, `output/cs/` customer stories.
 - **Partnerships** — always: common + `output/target-accounts.md`; on-demand: `output/research/{icp}/{slug}.md` when partner overlaps a target.
 - **Customer Success** — always: common; on-demand: `output/research/{icp}/{slug}.md` for accounts that became customers (history continuity), HubSpot via MCP for closed-won customer list.
@@ -98,14 +104,6 @@ The connection runs through the community **`mcp-remote`** npm package as a stdi
 Verify a fresh connection by asking in a **new** chat: "list my open deals from HubSpot." (Existing chats won't see new MCP tools — they're loaded at session start.)
 
 HubSpot writes (logging notes, creating tasks, changing stages) **must always be confirmed by the user in chat** before the agent calls the MCP write tool — never silent.
-
-### Dry-run mode
-
-The repo includes an isolated sandbox at `dry-run/` (gitignored) that mirrors the production layout (`dry-run/output/`, `dry-run/state/`, `dry-run/mocks/`). It exists so end-to-end flows can be exercised — including HubSpot-dependent ones via mock JSON in `dry-run/mocks/` — without touching real `output/`, `state/`, or HubSpot. See `dry-run/README.md` for the full contract.
-
-When the user explicitly says **"dry-run"**, **"test this flow"**, **"sandbox"**, or asks to validate the system without affecting real outputs, switch every agent's read/write root for that turn from `output/` → `dry-run/output/` and from `state/` → `dry-run/state/`. HubSpot reads come from `dry-run/mocks/hubspot-deals.json` (parsed as if it were the MCP response); HubSpot writes are **never executed in dry-run** — the agent only drafts the proposed write, shows the confirmation language, and stops. All other rules (shared-research, anti-fabrication, write-confirmation, slug convention) apply unchanged.
-
-When dry-run is **not** explicitly requested, agents always operate on the real `output/` and `state/` and `dry-run/` is invisible to them.
 
 ### Trigger phrases (the Orchestrator routes by intent)
 
@@ -133,7 +131,7 @@ When the user says "run [skill name]" or asks you to execute a GTM motion:
 1. Read the relevant skill file from the owning agent's `agents/{agent}/skills/` folder (the routing table in `agents/orchestrator.md` maps intents → agents → skills)
 2. Read all files in `context/` for product context
 3. Read any prior output files the skill depends on (dependencies are listed in each skill)
-4. Follow the skill's steps exactly, using web search when the skill calls for research; when a skill calls for Apollo email enrichment, **run** `python3 tools/apollo-enrich.py` in the terminal (do not delegate to the user)
+4. Follow the skill's steps exactly, using web search when the skill calls for research; when a skill calls for Apollo email enrichment, **run** `python3 tools/apollo/apollo-enrich.py` in the terminal (do not delegate to the user)
 5. Write the output to the specified location in `output/`
 6. Run the quality checklist at the end of the skill — every box must be checked
 7. Present key findings to the user and ask for feedback before finalizing
@@ -178,10 +176,10 @@ The Targeting Engine feeds into the Activation Engine. Always ensure `output/icp
 - At every step, ask: "So what?" — don't list facts without commercial interpretation
 - Scores must have one-sentence justifications — no vibes-based scoring
 - When the user asks to research an account that is NOT in `target-accounts.md`, default to Skill 08 (Inbound Qualification) unless they explicitly ask for a full Skill 04 deep dive
-- When the user asks to send, share, or email a research or outreach file, use `tools/send-email.py` with the file path, recipient, and a subject derived from the file title (e.g., `python tools/send-email.py --to "email" --subject "Account Research: Company" --file "output/research/icp-a-suite/company.md"`)
-- After writing any file to `output/research/` or `output/outreach/`, run `bash tools/sync-to-gcp.sh` to sync to the cloud VM so the Telegram bot can serve the latest files
+- When the user asks to send, share, or email a research or outreach file, use `tools/email/send-email.py` with the file path, recipient, and a subject derived from the file title (e.g., `python tools/email/send-email.py --to "email" --subject "Account Research: Company" --file "output/research/icp-a-suite/company.md"`)
+- After writing any file to `output/research/` or `output/outreach/`, run `bash tools/ops/sync-to-gcp.sh` to sync to the cloud VM so the Telegram bot can serve the latest files
 - Log outreach outcomes in `output/outreach-learnings.md` for calibration over time
-- **Apollo enrichment (agent-executed, not manual):** When running Skills 04, 08, or 03, **you must run** `tools/apollo-enrich.py` yourself (via the terminal) whenever work emails are needed — do **not** ask the user to run it. Use `search` (free) when only a title/role is known; use `enrich` (1 credit) when you have a full name + domain. Merge results into the Key People table, outreach drafts, and `target-accounts.md` contact lines. If `apollo_api_key` is missing or the API errors, note it under Research Gaps and continue — do not fabricate emails.
+- **Apollo enrichment (agent-executed, not manual):** When running Skills 04, 08, or 03, **you must run** `tools/apollo/apollo-enrich.py` yourself (via the terminal) whenever work emails are needed — do **not** ask the user to run it. Use `search` (free) when only a title/role is known; use `enrich` (1 credit) when you have a full name + domain. Merge results into the Key People table, outreach drafts, and `target-accounts.md` contact lines. If `apollo_api_key` is missing or the API errors, note it under Research Gaps and continue — do not fabricate emails.
 - **HubSpot writes are confirmed, never silent.** When `agents/pipeline-review` or `agents/exec-comms` could log a note, create a task, or change a deal stage in HubSpot via MCP, ALWAYS show the user the proposed change and wait for explicit confirmation before calling the MCP write tool.
 - **Pipeline data comes from HubSpot, not invented.** When running `agents/pipeline-review`, never fabricate stages, amounts, or activity. If HubSpot is empty or sparse, the report is honest about it.
 - **`state/` is gitignored** and contains qualitative business memory. Treat as confidential.

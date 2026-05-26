@@ -8,9 +8,9 @@ This skill is owned by the Chief of Staff agent. CoS is a pure composer: it read
 
 ## Inputs
 
-- **Cyvore GTM Weekly Sync Google Sheet** — Yonatan's live weekly customer sync workbook. **Required for `audience=weekly`.** One tab per week, named `DD.MM.YYYY`. Each tab carries 8 columns: `Tier | Company/Lead Name | Deal/Lead Stage | Status | Next Step | Assignee | Done? | moving status`. Read via `python3 tools/read-weekly-sync.py [--week YYYY-WW] [--prior]` (the tool reads the Sheet via service-account auth — no file uploads). Replaces the deprecated `state/weekly-customer-sync.xlsx`, which was archived during the 2026-W22 migration.
-- `output/pipeline/{YYYY-WW}.md` — latest weekly pipeline snapshot (written by the Sales agent's pipeline-maintenance skill)
-- `output/pipeline/{YYYY-WW}-sync-log.md` — this week's HubSpot sync audit log (written by Sales' hubspot-status-sync skill the same morning). Contains every CRM write applied today: updates, kills, creates, notes — with HubSpot IDs. **This is the canonical source for the digest's "CRM cleanup this week — killed deals & leads" section.** If absent, the digest's killed-records section must say `(no sync log available — counts deferred to next week)` rather than guess.
+- **Cyvore GTM Weekly Sync Google Sheet** — Yonatan's live weekly customer sync workbook. **Required for `audience=weekly`.** One tab per week, named `DD.MM.YYYY`. Each tab carries 8 columns: `Tier | Company/Lead Name | Deal/Lead Stage | Status | Next Step | Assignee | Done? | moving status`. Read via `python3 tools/sheets/read-weekly-sync.py [--week YYYY-WW] [--prior]` (the tool reads the Sheet via service-account auth — no file uploads). Replaces the deprecated `state/weekly-customer-sync.xlsx`, which was archived during the 2026-W22 migration.
+- `output/pipeline/{YYYY-WW}/snapshot.md` — latest weekly pipeline snapshot (written by the Sales agent's pipeline-maintenance skill)
+- `output/pipeline/{YYYY-WW}/sync-log.md` — this week's HubSpot sync audit log (written by Sales' hubspot-status-sync skill the same morning). Contains every CRM write applied today: updates, kills, creates, notes — with HubSpot IDs. **This is the canonical source for the digest's "CRM cleanup this week — killed deals & leads" section.** If absent, the digest's killed-records section must say `(no sync log available — counts deferred to next week)` rather than guess.
 - `state/weekly-context.md` — qualitative state (written by the weekly-context interview skill, also under CoS)
 - `output/outreach-learnings.md` — signal-to-outcome calibration log (if present)
 - `output/research/{icp}/{slug}.md` and `output/meeting-prep/{slug}-{date}.md` — for specific account references (read on demand by exact path; never glob)
@@ -20,10 +20,10 @@ CoS does NOT call HubSpot. If a number is needed and the latest pipeline snapsho
 
 ## Dependencies
 
-- For `audience=weekly`: the Cyvore GTM Weekly Sync Sheet contains a tab whose date falls in the current ISO week. The Mon 06:00 cron (`tools/generate-weekly-tab.py`) creates this tab automatically. If it's missing (cron failed, off-cycle digest), the orchestrator should run `python3 tools/generate-weekly-tab.py` before this skill, or the user can edit the Sheet directly.
-- A current-week pipeline snapshot exists at `output/pipeline/{YYYY-WW}.md` (the orchestrator runs Sales' pipeline-maintenance first if missing)
+- For `audience=weekly`: the Cyvore GTM Weekly Sync Sheet contains a tab whose date falls in the current ISO week. The Mon 06:00 cron (`tools/sheets/generate-weekly-tab.py`) creates this tab automatically. If it's missing (cron failed, off-cycle digest), the orchestrator should run `python3 tools/sheets/generate-weekly-tab.py` before this skill, or the user can edit the Sheet directly.
+- A current-week pipeline snapshot exists at `output/pipeline/{YYYY-WW}/snapshot.md` (the orchestrator runs Sales' pipeline-maintenance first if missing)
 - A recent `state/weekly-context.md` entry exists (the orchestrator runs the weekly-context interview first if stale or missing)
-- `tools/google-sheets-config.json` and `tools/google-sheets-credentials.json` are populated (one-time setup; see `tools/google-sheets-config.json.example`)
+- `tools/sheets/google-sheets-config.json` and `tools/sheets/google-sheets-credentials.json` are populated (one-time setup; see `tools/sheets/google-sheets-config.template.json`)
 
 ## Output
 
@@ -54,10 +54,10 @@ Load the matching template from `agents/chief-of-staff/templates/{audience}.md`.
 
 Before composing, verify:
 
-- For `audience=weekly`: the Cyvore GTM Weekly Sync Sheet has a tab whose date falls in the current ISO week. Run `python3 tools/read-weekly-sync.py --list` to inspect available tabs. If no tab matches, run `python3 tools/generate-weekly-tab.py` to create it from current HubSpot state, or ask the user to add the tab manually — never invent a tab.
-- A current-week pipeline snapshot exists at `output/pipeline/{YYYY-WW}.md`. If not, return to the orchestrator and ask it to run Sales' pipeline-maintenance first.
+- For `audience=weekly`: the Cyvore GTM Weekly Sync Sheet has a tab whose date falls in the current ISO week. Run `python3 tools/sheets/read-weekly-sync.py --list` to inspect available tabs. If no tab matches, run `python3 tools/sheets/generate-weekly-tab.py` to create it from current HubSpot state, or ask the user to add the tab manually — never invent a tab.
+- A current-week pipeline snapshot exists at `output/pipeline/{YYYY-WW}/snapshot.md`. If not, return to the orchestrator and ask it to run Sales' pipeline-maintenance first.
 - A weekly context entry exists for this week. If not, return to the orchestrator and ask it to run the weekly-context interview first.
-- A current-week sync log exists at `output/pipeline/{YYYY-WW}-sync-log.md` (only present if Sales' hubspot-status-sync ran this week). Used for the "CRM cleanup this week" section.
+- A current-week sync log exists at `output/pipeline/{YYYY-WW}/sync-log.md` (only present if Sales' hubspot-status-sync ran this week). Used for the "CRM cleanup this week" section.
 
 **Synthesize-from-meeting fast path.** If the user is running `weekly-customer-sync` (Sales) and `weekly digest` (CoS) back-to-back in the same chat — i.e. the meeting just happened — both `state/weekly-context.md` and the kill list are already in flight. Don't bounce back to the orchestrator demanding a separate weekly-context interview run. Instead:
 1. Synthesize this week's `state/weekly-context.md` entry directly from the conversation (wins / losses / people / product / leadership flags surfaced during the meeting), prepend it to the file, and surface the new entry to the user for confirmation.
@@ -83,7 +83,7 @@ CoS does NOT call HubSpot. Only Sales' pipeline-maintenance skill queries HubSpo
 Run the reader with `--prior` to get both this week's and last week's tabs in one JSON:
 
 ```
-python3 tools/read-weekly-sync.py --prior
+python3 tools/sheets/read-weekly-sync.py --prior
 ```
 
 From the combined output, derive:
@@ -98,7 +98,7 @@ From the combined output, derive:
   - Rows whose `moving status` is non-empty — Yonatan uses this column for progression notes (`yoav spoke with kfir`, `waiting for her to respond`, etc.). Treat these as candidate "wins" for the digest.
 - **Stale rows** — rows where `Status` and `Next Step` are unchanged vs. prior tab. These are candidates for the Top 3 risks section.
 
-Cross-check against the HubSpot pipeline snapshot at `output/pipeline/{YYYY-WW}.md`. Any account in the sync sheet that doesn't appear in the snapshot, or vice versa, is a reconciliation gap — note it but don't block the digest.
+Cross-check against the HubSpot pipeline snapshot at `output/pipeline/{YYYY-WW}/snapshot.md`. Any account in the sync sheet that doesn't appear in the snapshot, or vice versa, is a reconciliation gap — note it but don't block the digest.
 
 ### Step 4: Compose the output
 
@@ -129,14 +129,14 @@ Output to the right folder per audience. Filename uses the date convention above
 After the digest is confirmed and written, run:
 
 ```
-python3 tools/read-weekly-sync.py --by-assignee
+python3 tools/sheets/read-weekly-sync.py --by-assignee
 ```
 
 This writes one markdown file per unique `Assignee` to `output/exec-comms/weekly-tasks/{YYYY-WW}/{owner-slug}.md`. Each file contains:
 
 - That owner's rows from this week's tab (Tier, Account, Stage, Next Step, Status)
 - Carry-over rows from last week's tab where `Done?` was empty and a `Next Step` was set (the owner's unfinished commitments)
-- A pre-formatted `tools/send-email.py` snippet at the bottom
+- A pre-formatted `tools/email/send-email.py` snippet at the bottom
 
 Multi-owner cells like `Yoav, Ori` are split — each owner's file gets the row.
 
@@ -144,27 +144,27 @@ After generation, surface the list of owner files to the user and ask whether to
 
 ### Step 7: Send the digest (audience=weekly)
 
-Use the dedicated digest sender — not the generic `tools/send-email.py`:
+Use the dedicated digest sender — not the generic `tools/email/send-email.py`:
 
 ```bash
-python3 tools/send-digest.py --week {YYYY-WW}
+python3 tools/email/send-digest.py --week {YYYY-WW}
 ```
 
 What it handles automatically:
-- Recipient: `default_recipient` from `tools/email-config.json` (override with `--to`).
+- Recipient: `default_recipient` from `tools/email/email-config.json` (override with `--to`).
 - Subject: the digest's H1 (override with `--subject`).
-- Auto-attaches: the digest `.md`, a CSV export of the current week's tab from the Cyvore GTM Weekly Sync Sheet (was xlsx pre-2026-W22), and `output/pipeline/{YYYY-WW}-sync-log.md` if it exists.
+- Auto-attaches: the digest `.md`, a CSV export of the current week's tab from the Cyvore GTM Weekly Sync Sheet (was xlsx pre-2026-W22), and `output/pipeline/{YYYY-WW}/sync-log.md` if it exists.
 - Renders a "Live sync sheet" banner at the top of the email body with a clickable link straight to that week's Sheet tab — so recipients can open the source data on phone or laptop without needing the attachment.
-- Embeds `tools/assets/cyvore-logo-mark.png` inline at the top.
+- Embeds `tools/assets/cyvore-logo-mark.png` inline at the top (path unchanged after the tools/ restructure).
 - Strips `[label](relative-path.md)` hyperlinks from the email body — they don't resolve in mail clients — but keeps `http(s)://` and `mailto:` links and **does not modify the source file on disk**.
 
 Common modifiers: `--cc`, `--attach FILE` (repeatable), `--no-csv` (alias `--no-xlsx` retained for muscle memory), `--no-sheet-link`, `--no-logo`, `--dry-run`.
 
 Always run with `--dry-run` first if the digest structure changed materially this week — it prints the recipient, subject, full attachment list, whether the Sheet-link banner resolved a tab, and the count of stripped local-md links so the user can sanity-check before the real send.
 
-Degraded mode: if `tools/google-sheets-config.json` is not configured, the email still sends — just without the CSV attachment and without the Sheet-link banner. The digest content itself never depends on the Sheet being available at send time.
+Degraded mode: if `tools/sheets/google-sheets-config.json` is not configured, the email still sends — just without the CSV attachment and without the Sheet-link banner. The digest content itself never depends on the Sheet being available at send time.
 
-Why a dedicated tool: `tools/send-email.py` only supports a single attachment and no inline image. The weekly digest reliably needs the markdown + the raw weekly-sync data + the sync log + the logo + a live link to the Sheet. This was rebuilt three times in `/tmp/` on 2026-W21 before being promoted here. Use this tool — don't rebuild in `/tmp/`.
+Why a dedicated tool: `tools/email/send-email.py` only supports a single attachment and no inline image. The weekly digest reliably needs the markdown + the raw weekly-sync data + the sync log + the logo + a live link to the Sheet. This was rebuilt three times in `/tmp/` on 2026-W21 before being promoted here. Use this tool — don't rebuild in `/tmp/`.
 
 ---
 
@@ -194,8 +194,8 @@ Each template is a generic best-practice frame. Iterate them after the first 1-2
 - [ ] **Audience=weekly only:** per-assignee task files were generated and the list of paths was surfaced to the user
 - [ ] **Audience=weekly only:** every actionable bullet ends with `(Owner: {name})` — no anonymous TODOs
 - [ ] **Audience=weekly only:** the three template-mandatory sections are present — Current customers and live POCs, CRM cleanup this week — killed deals & leads, Waiting on customer
-- [ ] **Audience=weekly only:** killed-records counts match `output/pipeline/{YYYY-WW}-sync-log.md` exactly (no estimates)
-- [ ] **Audience=weekly only:** sent via `tools/send-digest.py` (not `send-email.py`, not an ad-hoc `/tmp/` script) so the xlsx + sync-log + logo + link-stripping are all consistent
+- [ ] **Audience=weekly only:** killed-records counts match `output/pipeline/{YYYY-WW}/sync-log.md` exactly (no estimates)
+- [ ] **Audience=weekly only:** sent via `tools/email/send-digest.py` (not `send-email.py`, not an ad-hoc `/tmp/` script) so the xlsx + sync-log + logo + link-stripping are all consistent
 
 ## Relationship to Other Skills
 

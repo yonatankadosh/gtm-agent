@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Mid-week, single-record edits to HubSpot. Free-form natural-language trigger ("update Cato — install done, sign next week"); single-row scope; explicit per-record confirmation. The xlsx is no longer the edit surface — HubSpot is the live source of truth, and the Cyvore GTM Weekly Sync Google Sheet (the Monday meeting tab) is regenerated weekly from HubSpot state by `tools/generate-weekly-tab.py`.
+Mid-week, single-record edits to HubSpot. Free-form natural-language trigger ("update Cato — install done, sign next week"); single-row scope; explicit per-record confirmation. The xlsx is no longer the edit surface — HubSpot is the live source of truth, and the Cyvore GTM Weekly Sync Google Sheet (the Monday meeting tab) is regenerated weekly from HubSpot state by `tools/sheets/generate-weekly-tab.py`.
 
 This is the **primary write path** for ad-hoc updates. The sibling skill [hubspot-status-sync.md](hubspot-status-sync.md) is the **catch-up path** — used after the Monday meeting if anyone hand-edited the xlsx during review.
 
@@ -12,7 +12,7 @@ This is the **primary write path** for ad-hoc updates. The sibling skill [hubspo
 
 - The user's free-form message (one of the four trigger phrases below)
 - `state/hubspot-mapping.json` — xlsx-name → HubSpot record IDs (deals + leads)
-- HubSpot CRM via the MCP (deals) and REST (leads, via `tools/hubspot-leads.py`)
+- HubSpot CRM via the MCP (deals) and REST (leads, via `tools/hubspot/hubspot-leads.py`)
 
 ## Trigger phrases
 
@@ -41,7 +41,7 @@ If the resolved entry has multiple deals (Cato Networks → Feed + Suite), the d
 
 If the resolved entry has both `deals[]` and `leads[]`: prefer the deal (deal beats lead — deals represent active commercial conversations). Surface the duplication as a warning.
 
-If no match: do NOT silently fail. Reply: "I don't have `{account}` in `state/hubspot-mapping.json`. Did you mean one of: <closest 3 fuzzy matches>? Or should I create a new record?" The "create a new record" path uses the same flow as the [Phase 2 lead bootstrap pattern from 2026-05-13](../../output/pipeline/2026-19-sync-log.md) — search HubSpot Companies/Contacts first, then create what's missing, then create the Lead.
+If no match: do NOT silently fail. Reply: "I don't have `{account}` in `state/hubspot-mapping.json`. Did you mean one of: <closest 3 fuzzy matches>? Or should I create a new record?" The "create a new record" path uses the same flow as the [Phase 2 lead bootstrap pattern from 2026-05-13](../../output/pipeline/2026-19/sync-log.md) — search HubSpot Companies/Contacts first, then create what's missing, then create the Lead.
 
 ### Step 2: Build the proposed write
 
@@ -91,27 +91,27 @@ Two equivalent paths — pick MCP if available, REST otherwise. Both produce ide
 
 **MCP path (preferred when available):**
 - **Deals:** call `manage_crm_objects.updateRequest` with `confirmationStatus: "CONFIRMED"`. The MCP enforces its own confirmation table — treat it as a second-line guard.
-- **Leads:** run `python3 tools/hubspot-leads.py update --id N --status "X" --next-step "Y"` (or `batch --plan PATH` for multi-lead writes).
+- **Leads:** run `python3 tools/hubspot/hubspot-leads.py update --id N --status "X" --next-step "Y"` (or `batch --plan PATH` for multi-lead writes).
 - **Note creation:** call `manage_crm_objects.createRequest` with `objectType: "notes"` + association block to the deal/lead. For leads, fall back to the REST `/crm/v3/objects/notes` endpoint.
 
-**REST path (when MCP is errored / for any operation MCP doesn't expose):** use `tools/hubspot-batch.py` — one CLI for every single-record operation:
+**REST path (when MCP is errored / for any operation MCP doesn't expose):** use `tools/hubspot/hubspot-batch.py` — one CLI for every single-record operation:
 
 ```bash
-python3 tools/hubspot-batch.py update     --type {deal|lead} --id N --prop hs_next_step="..." [--prop ...]
-python3 tools/hubspot-batch.py move       --type {deal|lead} --id N --to {stage-alias}
-python3 tools/hubspot-batch.py note       --type {deal|lead} --id N --body "..."
-python3 tools/hubspot-batch.py kill       --type {deal|lead} --id N --reason "..."   # move + note in one call
-python3 tools/hubspot-batch.py create-deal --name "..." --stage in-meetings [--prop ...]
-python3 tools/hubspot-batch.py create-lead --name "..." --stage connected --status "..." --next-step "..." [--company-domain ...]
+python3 tools/hubspot/hubspot-batch.py update     --type {deal|lead} --id N --prop hs_next_step="..." [--prop ...]
+python3 tools/hubspot/hubspot-batch.py move       --type {deal|lead} --id N --to {stage-alias}
+python3 tools/hubspot/hubspot-batch.py note       --type {deal|lead} --id N --body "..."
+python3 tools/hubspot/hubspot-batch.py kill       --type {deal|lead} --id N --reason "..."   # move + note in one call
+python3 tools/hubspot/hubspot-batch.py create-deal --name "..." --stage in-meetings [--prop ...]
+python3 tools/hubspot/hubspot-batch.py create-lead --name "..." --stage connected --status "..." --next-step "..." [--company-domain ...]
 ```
 
 Stage aliases: `in-meetings / finalizing / running-poc / closed-won / closed-lost` (deals) and `new / attempting / connected / qualified / disqualified` (leads). The tool resolves them to canonical HubSpot stage IDs internally.
 
-If the write fails, surface the HubSpot error verbatim and stop. Do not retry silently. For batch ops > 1 record, switch to [hubspot-status-sync.md](hubspot-status-sync.md) and use `tools/hubspot-batch.py batch --plan PATH`.
+If the write fails, surface the HubSpot error verbatim and stop. Do not retry silently. For batch ops > 1 record, switch to [hubspot-status-sync.md](hubspot-status-sync.md) and use `tools/hubspot/hubspot-batch.py batch --plan PATH`.
 
 ### Step 6: Log the edit to the weekly sync log
 
-Append a one-line entry to [output/pipeline/{YYYY-WW}-sync-log.md](../../output/pipeline/) — use the current ISO week. Format:
+Append a one-line entry to [output/pipeline/{YYYY-WW}/sync-log.md](../../output/pipeline/) — use the current ISO week. Format:
 
 ```
 - {timestamp IDT}: quick-update on {account} ({deal_id|lead_id}): cyvore_weekly_status="X", hs_next_step="Y" — applied. https://app.hubspot.com/contacts/.../record/0-3/{id}
@@ -165,7 +165,7 @@ Aliases: "lost" / "closed lost" / "killed" / "dead" all → Closed Lost (deal) o
 - [ ] No write was issued before the user said "apply" / "yes" / equivalent
 - [ ] Stage labels were normalized to canonical HubSpot IDs (rejecting unknown labels)
 - [ ] Kill operations included a reason — either provided by user or asked-and-received
-- [ ] Sync log entry was appended to `output/pipeline/{YYYY-WW}-sync-log.md`
+- [ ] Sync log entry was appended to `output/pipeline/{YYYY-WW}/sync-log.md`
 - [ ] HubSpot record link in the log is clickable
 
 ## Relationship to other skills
@@ -173,7 +173,7 @@ Aliases: "lost" / "closed lost" / "killed" / "dead" all → Closed Lost (deal) o
 ```
 agents/sales/skills/hubspot-quick-update.md   →  PRIMARY write path. Mid-week, free-form, single-record. (this skill)
 agents/sales/skills/hubspot-status-sync.md    →  MONDAY MEETING write path. Batch sync from the Cyvore GTM Weekly Sync Sheet → HubSpot.
-tools/generate-weekly-tab.py                  →  REVERSE direction: HubSpot → Sheet (Monday morning, regenerates the team's weekly tab).
+tools/sheets/generate-weekly-tab.py           →  REVERSE direction: HubSpot → Sheet (Monday morning, regenerates the team's weekly tab).
 agents/sales/skills/pipeline-maintenance.md   →  READ-ONLY weekly snapshot. Reflects whatever this skill (and the Monday meeting skill) wrote during the week.
 ```
 
@@ -181,8 +181,8 @@ When in doubt about which write path to use:
 
 - **Single record, ad-hoc, "I just talked to X"** → quick-update (this skill)
 - **Whole batch from the Sheet, post-Monday-meeting** → hubspot-status-sync (sibling skill)
-- **Need to know what changed this week** → read `output/pipeline/{YYYY-WW}-sync-log.md`
-- **Need to refresh this week's tab in the Sheet from HubSpot** → run `python3 tools/generate-weekly-tab.py`
+- **Need to know what changed this week** → read `output/pipeline/{YYYY-WW}/sync-log.md`
+- **Need to refresh this week's tab in the Sheet from HubSpot** → run `python3 tools/sheets/generate-weekly-tab.py`
 
 ## Examples
 

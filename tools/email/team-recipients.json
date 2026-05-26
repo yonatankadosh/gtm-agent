@@ -1,0 +1,27 @@
+{
+  "_doc": "Audience presets for tools/email/send-digest.py and other team-comms scripts. Each audience has a 'to' list (primary recipients) and optional 'cc' list. Resolved at send time when --audience <key> is passed; explicit --to / --cc on the command line override these. Update here, not in the script.",
+  "audiences": {
+    "weekly-leadership": {
+      "description": "Internal weekly digest audience — founders + GTM leadership. Verified 2026-05-25.",
+      "to": ["yonatank@cyvore.com"],
+      "cc": [
+        "yoav@cyvore.com",
+        "ori@cyvore.com",
+        "ellar@cyvore.com",
+        "peterv@cyvore.com",
+        "yiftach@cyvore.com",
+        "avivb@cyvore.com"
+      ]
+    },
+    "cyvore-team": {
+      "description": "Default Cyvore-team CC for customer-facing comms. Mirrors DEFAULT_CYVORE_TEAM_CC in tools/email/send-release-note.py.",
+      "to": [],
+      "cc": [
+        "ellar@cyvore.com",
+        "peterv@cyvore.com",
+        "yoav@cyvore.com",
+        "yiftach@cyvore.com"
+      ]
+    }
+  }
+}

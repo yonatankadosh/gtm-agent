@@ -10,30 +10,30 @@ first resolves domain -> Apollo org_id via /organizations/enrich (free).
 Recommended (highest hit rate):
 
   Find — search + reveal email by title at a domain:
-    python tools/apollo-enrich.py find --domain playtika.com
-    python tools/apollo-enrich.py find --domain roblox.com \\
+    python tools/apollo/apollo-enrich.py find --domain playtika.com
+    python tools/apollo/apollo-enrich.py find --domain roblox.com \\
         --titles "Chief Safety Officer,Head of Trust and Safety"
 
   Find without spending credits (search only, last names obfuscated):
-    python tools/apollo-enrich.py find --domain playtika.com --no-enrich
+    python tools/apollo/apollo-enrich.py find --domain playtika.com --no-enrich
 
 Other modes:
 
   Search (free, no credits, last names obfuscated):
-    python tools/apollo-enrich.py search --domain cyera.io --title "CISO"
+    python tools/apollo/apollo-enrich.py search --domain cyera.io --title "CISO"
 
   Enrich a known person by name (1 credit; resolves org_id automatically):
-    python tools/apollo-enrich.py enrich --domain cyera.io --name "Nathan Smolenski"
-    python tools/apollo-enrich.py enrich --domain cyera.io --name "Nathan Smolenski" \\
+    python tools/apollo/apollo-enrich.py enrich --domain cyera.io --name "Nathan Smolenski"
+    python tools/apollo/apollo-enrich.py enrich --domain cyera.io --name "Nathan Smolenski" \\
         --linkedin https://linkedin.com/in/nathan-smolenski   # strongest match
 
   Debug any single call (prints raw Apollo response + headers):
-    python tools/apollo-enrich.py enrich --domain x.com --name "..." --debug
-    python tools/apollo-enrich.py find --domain x.com --debug
+    python tools/apollo/apollo-enrich.py enrich --domain x.com --name "..." --debug
+    python tools/apollo/apollo-enrich.py find --domain x.com --debug
 
   Batch (reads target-accounts.md, enriches named contacts without emails):
-    python tools/apollo-enrich.py batch --file output/target-accounts.md
-    python tools/apollo-enrich.py batch --file output/target-accounts.md --update
+    python tools/apollo/apollo-enrich.py batch --file output/target-accounts.md
+    python tools/apollo/apollo-enrich.py batch --file output/target-accounts.md --update
 """
 
 from __future__ import annotations
@@ -48,13 +48,12 @@ from pathlib import Path
 import requests
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = SCRIPT_DIR / "email-config.json"
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+CONFIG_PATH = PROJECT_ROOT / "tools" / "email" / "email-config.json"
 
 APOLLO_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
 APOLLO_ORG_ENRICH_URL = "https://api.apollo.io/api/v1/organizations/enrich"
-
-PROJECT_ROOT = SCRIPT_DIR.parent
 
 # ---------------------------------------------------------------------------
 # Config
@@ -824,7 +823,7 @@ def main():
     sp_res.add_argument("--root", default="output/research", help="Root folder to scan")
     sp_res.add_argument(
         "--log",
-        default="output/apollo-enrichment-research.md",
+        default="state/apollo-enrichment-log.md",
         help="Write markdown summary here (set empty to skip)",
     )
 
@@ -835,7 +834,7 @@ def main():
     )
     sp_all.add_argument("--target", default="output/target-accounts.md")
     sp_all.add_argument("--research-root", default="output/research")
-    sp_all.add_argument("--log-research", default="output/apollo-enrichment-research.md")
+    sp_all.add_argument("--log-research", default="state/apollo-enrichment-log.md")
 
     args = parser.parse_args()
     api_key = load_api_key()

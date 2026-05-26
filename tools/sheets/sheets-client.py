@@ -8,16 +8,16 @@ week named `DD.MM.YYYY`. Tab schema is unchanged from the xlsx era — 8
 columns: Tier | Company/Lead Name | Deal/Lead Stage | Status | Next Step |
 Assignee | Done? | moving status.
 
-Auth: service account credentials at `tools/google-sheets-credentials.json`
+Auth: service account credentials at `tools/sheets/google-sheets-credentials.json`
 (gitignored). The Sheet ID + credentials path live in
-`tools/google-sheets-config.json` (also gitignored). Sheet must be shared
+`tools/sheets/google-sheets-config.json` (also gitignored). Sheet must be shared
 with the service account email as Editor.
 
 Imported by:
-  - tools/generate-weekly-tab.py     (writes new Monday tab from HubSpot)
-  - tools/read-weekly-sync.py        (reads tab JSON for the digest)
-  - tools/send-digest.py             (CSV export + Sheet link for emails)
-  - tools/migrate-xlsx-to-sheet.py   (one-time: xlsx history -> Sheet)
+  - tools/sheets/generate-weekly-tab.py     (writes new Monday tab from HubSpot)
+  - tools/sheets/read-weekly-sync.py        (reads tab JSON for the digest)
+  - tools/email/send-digest.py              (CSV export + Sheet link for emails)
+  - tools/sheets/migrate-xlsx-to-sheet.py   (one-time: xlsx history -> Sheet)
 
 Usage as a module:
     from sheets_client import SheetsClient, EXPECTED_HEADERS
@@ -31,10 +31,10 @@ Usage as a module:
     sc.tab_url('24.05.2026')
 
 Usage as CLI (smoke tests; intentionally minimal):
-    python3 tools/sheets-client.py info        # print Sheet URL + tabs
-    python3 tools/sheets-client.py list        # list tabs (one per line)
-    python3 tools/sheets-client.py read TAB    # dump tab as JSON
-    python3 tools/sheets-client.py url TAB     # print URL pointing to that tab
+    python3 tools/sheets/sheets-client.py info        # print Sheet URL + tabs
+    python3 tools/sheets/sheets-client.py list        # list tabs (one per line)
+    python3 tools/sheets/sheets-client.py read TAB    # dump tab as JSON
+    python3 tools/sheets/sheets-client.py url TAB     # print URL pointing to that tab
 """
 
 import argparse
@@ -44,8 +44,8 @@ import sys
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG = REPO_ROOT / "tools" / "google-sheets-config.json"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG = REPO_ROOT / "tools" / "sheets" / "google-sheets-config.json"
 
 EXPECTED_HEADERS = [
     "Tier",
@@ -93,9 +93,9 @@ class SheetsClient:
         if not self.config_path.exists():
             _die(
                 f"Missing {self.config_path}. Copy "
-                "tools/google-sheets-config.json.example to that path, fill "
-                "in your sheet_id, and ensure the service account credentials "
-                "JSON is at the credentials_path."
+                "tools/sheets/google-sheets-config.template.json to that path, "
+                "fill in your sheet_id, and ensure the service account "
+                "credentials JSON is at the credentials_path."
             )
         cfg = json.loads(self.config_path.read_text(encoding="utf-8"))
 
@@ -103,7 +103,7 @@ class SheetsClient:
         if not sheet_id:
             _die(f"{self.config_path} has no 'sheet_id'. Paste the ID from your Google Sheet URL.")
 
-        creds_rel = cfg.get("credentials_path") or "tools/google-sheets-credentials.json"
+        creds_rel = cfg.get("credentials_path") or "tools/sheets/google-sheets-credentials.json"
         creds_path = Path(creds_rel)
         if not creds_path.is_absolute():
             creds_path = REPO_ROOT / creds_rel

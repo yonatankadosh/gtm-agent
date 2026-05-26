@@ -3,7 +3,7 @@
 HubSpot batch operations via REST — the fallback when the HubSpot MCP is
 unavailable, and the standard tool for batch ops larger than a single record.
 
-Auth: reads `tools/hubspot-config.json` Private App token. Required scopes for
+Auth: reads `tools/hubspot/hubspot-config.json` Private App token. Required scopes for
 the FULL set of operations (verified 2026-05-18):
     - crm.objects.deals.read+write
     - crm.objects.leads.read+write   (object 0-136 — MCP doesn't expose this)
@@ -78,8 +78,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-CONFIG_PATH = REPO / "tools" / "hubspot-config.json"
+REPO = Path(__file__).resolve().parents[2]
+CONFIG_PATH = REPO / "tools" / "hubspot" / "hubspot-config.json"
 API = "https://api.hubapi.com"
 LEADS_OBJECT = "0-136"
 

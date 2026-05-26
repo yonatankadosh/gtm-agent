@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>/Users/yonatankadosh/Documents/GTM agent/tools/generate-weekly-tab.py</string>
+        <string>/Users/yonatankadosh/Documents/GTM agent/tools/sheets/generate-weekly-tab.py</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -28,10 +28,10 @@
     <false/>
 
     <key>StandardOutPath</key>
-    <string>/Users/yonatankadosh/Documents/GTM agent/tools/launchd/weekly-tab.stdout.log</string>
+    <string>/Users/yonatankadosh/Documents/GTM agent/tools/ops/launchd/weekly-tab.stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/yonatankadosh/Documents/GTM agent/tools/launchd/weekly-tab.stderr.log</string>
+    <string>/Users/yonatankadosh/Documents/GTM agent/tools/ops/launchd/weekly-tab.stderr.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

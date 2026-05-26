@@ -8,7 +8,7 @@ This script bridges that gap — used by the hubspot-status-sync skill to read
 and write Status + Next Step on early-funnel xlsx rows that live as HubSpot
 Leads, not Deals.
 
-Auth: reads a Private App access token from `tools/hubspot-config.json`:
+Auth: reads a Private App access token from `tools/hubspot/hubspot-config.json`:
 
     { "private_app_token": "pat-eu1-..." }
 
@@ -29,7 +29,7 @@ Subcommands:
           [--dry-run]         Read a JSON plan (list of {id, properties: {...}})
                               and apply via HubSpot's batch update endpoint.
                               Used by the agent after the user has confirmed
-                              the diff in `output/pipeline/{YYYY-WW}-sync-log.md`.
+                              the diff in `output/pipeline/{YYYY-WW}/sync-log.md`.
 
     init-properties           One-time setup: create the custom properties
                               `cyvore_weekly_status` and `cyvore_next_step`
@@ -64,8 +64,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = REPO_ROOT / "tools" / "hubspot-config.json"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = REPO_ROOT / "tools" / "hubspot" / "hubspot-config.json"
 
 API_BASE = "https://api.hubapi.com"
 LEADS_OBJECT_TYPE = "0-136"

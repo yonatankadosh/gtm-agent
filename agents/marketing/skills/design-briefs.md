@@ -159,7 +159,7 @@ Show the full brief draft (source-grounding table + design prompt + cover-email 
 - Edit specific sections (loop)
 - Discard
 
-Only write the file on explicit user confirmation. After writing, run `bash tools/sync-to-gcp.sh` per workspace rules.
+Only write the file on explicit user confirmation. After writing, run `bash tools/ops/sync-to-gcp.sh` per workspace rules.
 
 ---
 
